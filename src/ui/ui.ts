@@ -159,6 +159,7 @@ export function setScore(score: number, gained: number): void {
   if (gained === 0) return;
   const stack = el('stack');
   stack.textContent = `+${gained}`;
+  stack.style.setProperty('--gain', String(Math.min(1, Math.max(0, (Math.log2(gained) - 2) / 8)))); // 큰 점수일수록 크게 강조
   stack.classList.remove('pop');
   void stack.offsetWidth; // 리플로를 일으켜 같은 애니메이션을 다시 시작한다
   stack.classList.add('pop');

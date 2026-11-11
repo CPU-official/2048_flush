@@ -1,6 +1,6 @@
 import { Application, Container } from 'pixi.js';
 import demoLog from './assets/demo-log.json';
-import { DEMO_END_PAUSE, DEMO_STEP, IDLE_LOGOUT, NICKNAME_MAX, RANK_TOP } from './constants';
+import { DEMO_END_PAUSE, DEMO_STEP, IDLE_LOGOUT, RECORD_BURST, NICKNAME_MAX, RANK_TOP } from './constants';
 import { maxTile, type Direction } from './core/game';
 import { validAccount, type Account } from './game/account';
 import { Demo } from './game/demo';
@@ -14,6 +14,9 @@ import * as ui from './ui/ui';
 import { initConsole } from './ui/console/console';
 import { initSettings, openSettings, setConnected } from './ui/settings';
 import { bump } from './vfx/bump';
+import { flash } from './vfx/flash';
+import { impactOf } from './vfx/impact';
+import { shake } from './vfx/shake';
 import { Particles } from './vfx/particles';
 
 // e.code 기준: 한글 입력기나 Caps Lock 상태에서도 WASD가 동작한다
@@ -31,7 +34,9 @@ document.documentElement.style.setProperty('--board', `${BOARD_PX}px`);
 const world = new Container(); // 창 가운데에 두고, 튕김은 board 자체 좌표로 한다
 const board = new BoardView();
 const particles = new Particles();
-world.addChild(board, particles);
+const shaker = new Container(); // 화면 흔들림 전용. board는 bump가 따로 움직이므로 한 겹 감싼다
+shaker.addChild(board, particles);
+world.addChild(shaker);
 app.stage.addChild(world);
 
 // 시작 화면 오른쪽에서 기록된 판을 반복 재생한다 (시작 화면일 때만 보인다)
@@ -75,6 +80,7 @@ if (window.api) {
 let session: GameSession | null = null;
 let account: Account | null = null; // 메모리에만 둔다. 종료/무입력 시 비운다
 let rankingView = 0; // 랭킹 팝업을 열거나 닫을 때마다 올린다
+let record = 0; // 이번 게임에서 지금까지 나온 가장 큰 타일
 let gameId = ''; // 게임마다 새로 만든다. 서버가 중복 제출을 걸러내는 키
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -83,6 +89,7 @@ function startGame(): void {
   session = new GameSession((Math.random() * 2 ** 32) | 0, net.timer, performance.now());
   gameId = crypto.randomUUID();
   board.reset(session.state.board);
+  record = maxTile(session.state.board);
   world.visible = true;
   demoWorld.visible = false;
   ui.showGame(account?.nickname ?? null);
@@ -149,11 +156,18 @@ window.addEventListener('keydown', (e) => {
   const result = session.input(dir, performance.now());
   if (result) {
     board.apply(result.events);
-    if (vfx) bump(board, dir);
-    for (const ev of result.events) {
-      if (ev.type !== 'merge' || !vfx) continue;
-      const { x, y } = cellCenter(ev.at);
-      particles.burst(x, y, tileColor(ev.value), BURST_BASE + Math.log2(ev.value));
+    const impact = impactOf(result.events, record);
+    record = Math.max(record, impact.merge);
+    if (vfx) {
+      bump(board, dir);
+      for (const ev of result.events) {
+        if (ev.type !== 'merge') continue;
+        const { x, y } = cellCenter(ev.at);
+        const boost = impact.record && ev.value === impact.merge ? RECORD_BURST : 1;
+        particles.burst(x, y, tileColor(ev.value), (BURST_BASE + 2 * Math.log2(ev.value)) * boost);
+      }
+      if (impact.shake) shake(shaker, impact.shake);
+      if (impact.flash) flash(app.stage, app.screen.width, app.screen.height, tileColor(impact.merge), impact.flash);
     }
     ui.setScore(session.state.score, result.gained);
   }

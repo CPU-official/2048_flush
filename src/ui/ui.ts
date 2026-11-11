@@ -6,7 +6,7 @@ const root = document.getElementById('ui')!;
 root.innerHTML = `
   <div data-id="status" class="status"></div>
   <section data-screen="start" class="start">
-    <h1 class="logo">2048</h1>
+    <h1 class="logo"><svg viewBox="0 0 460 280" role="img" aria-label="2048"><path d="M80 0H460L420 200L0 280Z" /><text x="240" y="178" class="num">2048</text></svg></h1>
     <nav class="menu">
       <button data-act="play">게임 플레이</button>
       <button data-act="match" disabled>대결</button>

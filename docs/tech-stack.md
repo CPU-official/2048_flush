@@ -34,6 +34,8 @@ Windows / macOS 전용 Electron 데스크톱 2D 2048 게임. 화려한 VFX와 �
 - 제한 시간 타이머, 계정 세션, 게임 흐름(종료 팝업, 60초 무입력 처리)은 `game`에 둔다.
 - 이펙트를 아무리 추가해도 로직이 오염되지 않고, `core`는 단위 테스트가 쉽다.
 - **DOM과 Pixi의 역할**: 보드, 타일, 파티클 등 게임 연출은 Pixi 캔버스에, 메뉴/HUD/시간 바/팝업/입력창은 그 위에 겹친 DOM(`src/ui`)에 그린다. 텍스트 입력과 팝업은 DOM이 훨씬 단순하다. 비네팅도 DOM 레이어(`#vignette`)다.
+- `electron/server`는 Electron API를 쓰지 않는 순수 Node 코드다. 데이터 폴더와 포트를 인자로 받으므로 Vitest에서 임시 폴더로 실제 서버를 띄워 클라이언트(`src/net/client.ts`)와 함께 테스트한다.
+- 화면 전환과 게임 흐름(게임 오버 → 계정 입력 → 제출 → 계속/종료, 60초 무입력)의 연결은 `src/main.ts`에 있다.
 - `game`의 세션은 시계를 직접 읽지 않고 호출하는 쪽이 `now`(ms)를 넘겨준다. 그래서 타이머 규칙을 단위 테스트할 수 있다.
 
 ## 폴더 구조
@@ -41,7 +43,7 @@ Windows / macOS 전용 Electron 데스크톱 2D 2048 게임. 화려한 VFX와 �
 ```
 src/
 ├── core/        # 순수 TS 게임 로직 (보드, 이동, 머지, 점수, mulberry32 RNG) + 테스트
-├── game/        # 제한 시간 타이머(S자 곡선), 계정 세션, 게임 흐름, 대결 흐름
+├── game/        # 제한 시간 타이머(S자 곡선), 계정 형식 검사(서버와 공유), 게임 세션, 대결 흐름
 ├── render/      # PixiJS 씬, 타일 스프라이트, 보드 렌더링
 ├── vfx/         # 파티클, 셰이더, 필터, 화면 흔들림 등 이펙트
 ├── audio/       # Howler 기반 사운드 매니저
@@ -52,8 +54,8 @@ src/
 └── main.ts
 electron/
 ├── main.ts      # 메인 프로세스 (창 생성, 네이티브 기능, 서버 시작/중지)
-├── preload.ts   # 렌더러에 노출할 최소 API
-└── server/      # ws 서버, 대결 매칭/중계, 랭킹 저장소(load/save), 서버 설정
+├── preload.ts   # 렌더러에 노출할 최소 API (`window.api`, 타입은 src/env.d.ts)
+└── server/      # ws 서버(server.ts), 랭킹 저장소(ranking.ts: load/save/제출/조회), 대결 매칭/중계, 서버 설정
 ```
 
 ## VFX 아이디어 목록

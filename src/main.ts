@@ -1,9 +1,10 @@
 import { Application, Container } from 'pixi.js';
 import demoLog from './assets/demo-log.json';
 import { DEMO_END_PAUSE, DEMO_STEP, IDLE_LOGOUT, RECORD_BURST, NICKNAME_MAX, RANK_TOP } from './constants';
-import { maxTile, type Direction } from './core/game';
+import { maxTile, type Direction, type MoveResult } from './core/game';
 import { validAccount, type Account } from './game/account';
 import { Demo } from './game/demo';
+import { Match } from './game/match';
 import { GameSession } from './game/session';
 import type { AppState } from './net/admin';
 import { NetClient, testConnection } from './net/client';
@@ -12,6 +13,7 @@ import { BOARD_PX, BoardView, cellCenter, tileColor } from './render/board';
 import './ui/style.css';
 import * as ui from './ui/ui';
 import { initConsole } from './ui/console/console';
+import * as matchUi from './ui/match';
 import { initSettings, openSettings, setConnected } from './ui/settings';
 import { bump } from './vfx/bump';
 import { flash } from './vfx/flash';
@@ -49,11 +51,25 @@ demoBoard.reset(demo.state.board);
 let demoWait = DEMO_STEP;
 let demoEnded = false;
 
+// 대결: 상대 보드는 오른쪽에 놓고 경량 VFX(이동/머지 연출)만 쓴다. 내 보드는 world를 왼쪽으로 옮겨 그대로 쓴다.
+const theirsWorld = new Container();
+const theirsBoard = new BoardView();
+theirsWorld.addChild(theirsBoard);
+theirsWorld.visible = false;
+app.stage.addChild(theirsWorld);
+
 const net = new NetClient();
+const matchFlow = new Match(net);
+let matchNick = ''; // 이번 대결에 쓴 닉네임 ("다시 대결 찾기"에 다시 쓴다)
+let inMatch = false; // 화면이 대결 배치(좌우 두 보드)인가
 net.onChange = () => {
   ui.setStatus(net.connected, net.queue.length);
+  ui.setMatchEnabled(net.connected);
   setConnected(net.connected);
+  if (!net.connected && matchFlow.phase === 'waiting') quit(); // 대기 중에 끊기면 처음으로
 };
+net.onMatch = (msg) => matchFlow.handle(msg, performance.now());
+matchFlow.onOpponentMove = (result) => theirsBoard.apply(result.events);
 net.onChange();
 
 let vfx = true; // 이 PC 설정. 끄면 파티클과 보드 튕김을 생략한다
@@ -102,6 +118,10 @@ function startGame(): void {
 }
 
 function quit(): void {
+  if (matchFlow.phase === 'waiting' || matchFlow.phase === 'finished') matchFlow.leave(); // 대기 취소 또는 결과 화면에서 나가기
+  inMatch = false;
+  theirsWorld.visible = false;
+  matchUi.clearMatchNick();
   clearTimeout(idleTimer);
   session = null;
   account = null;
@@ -111,6 +131,48 @@ function quit(): void {
   demoWorld.visible = true;
   ui.showStart();
 }
+
+// 대결 단계가 바뀔 때 화면을 맞춘다. 대기 중 팝업은 시작 화면 위에, 카운트다운부터는 대결 화면이다.
+function showMatchBackdrop(): void {
+  inMatch = false;
+  world.visible = false;
+  theirsWorld.visible = false;
+  demoWorld.visible = true;
+  ui.setTime(1);
+}
+
+matchFlow.onChange = () => {
+  const { phase, mine, theirs } = matchFlow;
+  if (phase === 'waiting') {
+    showMatchBackdrop();
+    matchUi.showMatchWaiting();
+  } else if (phase === 'countdown' && mine && theirs) {
+    inMatch = true;
+    record = maxTile(mine.state.board);
+    board.reset(mine.state.board);
+    theirsBoard.reset(theirs.board);
+    world.visible = true;
+    theirsWorld.visible = true;
+    demoWorld.visible = false;
+    matchUi.showMatchGame(matchNick, matchFlow.opponent);
+  } else if (phase === 'finished' && matchFlow.result) {
+    const r = matchFlow.result;
+    const forfeit = r.reason === 'forfeit'; // 부전승일 때 서버가 보낸 점수는 신뢰할 수 없어 화면의 점수를 쓴다
+    const note = forfeit ? '상대가 돌아오지 않아 승리했어요' : r.reason === 'timeLimit' ? '대결 시간이 끝났어요' : '';
+    matchUi.showMatchResult(r.outcome, forfeit ? mine!.state.score : r.score, forfeit ? theirs!.score : r.opponentScore, note);
+  }
+  matchUi.setMatchOver(matchFlow.myEnd !== null, matchFlow.opponentOver !== null);
+};
+
+function findMatch(nickname: string): void {
+  if (!nickname) return matchUi.showMatchNick('닉네임을 입력하세요.');
+  matchNick = nickname;
+  if (!matchFlow.find(nickname)) {
+    showMatchBackdrop(); // 결과 화면에서 끊긴 경우 대결 배치를 정리한다
+    matchUi.showMatchNick('서버에 연결되지 않았어요.');
+  }
+}
+matchUi.onMatchFind(findMatch);
 
 // 종료 팝업에서 입력이 없으면 종료와 동일하게 처리한다.
 function armIdle(): void {
@@ -148,27 +210,38 @@ async function openRanking(scope: RankScope): Promise<void> {
   ui.showRanking(scope, entries ?? [], entries ? (entries.length ? '' : '아직 기록이 없어요') : '서버 연결 안 됨', inGame);
 }
 
+// 내 보드에 한 수를 반영하고 연출을 붙인다 (싱글, 대결 공통)
+function applyMine(result: MoveResult, dir: Direction): void {
+  board.apply(result.events);
+  const impact = impactOf(result.events, record);
+  record = Math.max(record, impact.merge);
+  if (!vfx) return;
+  bump(board, dir);
+  for (const ev of result.events) {
+    if (ev.type !== 'merge') continue;
+    const { x, y } = cellCenter(ev.at);
+    const boost = impact.record && ev.value === impact.merge ? RECORD_BURST : 1;
+    particles.burst(x, y, tileColor(ev.value), (BURST_BASE + 2 * Math.log2(ev.value)) * boost);
+  }
+  if (impact.shake) shake(shaker, impact.shake);
+  if (impact.flash) flash(app.stage, app.screen.width, app.screen.height, tileColor(impact.merge), impact.flash);
+}
+
 window.addEventListener('keydown', (e) => {
-  if (session?.ended) return armIdle();
   const dir = KEYS[e.code];
+  if (matchFlow.phase === 'playing') {
+    if (!dir || e.repeat) return;
+    e.preventDefault();
+    const result = matchFlow.input(dir, performance.now());
+    if (result) applyMine(result, dir);
+    return;
+  }
+  if (session?.ended) return armIdle();
   if (!dir || !session || e.repeat) return;
   e.preventDefault();
   const result = session.input(dir, performance.now());
   if (result) {
-    board.apply(result.events);
-    const impact = impactOf(result.events, record);
-    record = Math.max(record, impact.merge);
-    if (vfx) {
-      bump(board, dir);
-      for (const ev of result.events) {
-        if (ev.type !== 'merge') continue;
-        const { x, y } = cellCenter(ev.at);
-        const boost = impact.record && ev.value === impact.merge ? RECORD_BURST : 1;
-        particles.burst(x, y, tileColor(ev.value), (BURST_BASE + 2 * Math.log2(ev.value)) * boost);
-      }
-      if (impact.shake) shake(shaker, impact.shake);
-      if (impact.flash) flash(app.stage, app.screen.width, app.screen.height, tileColor(impact.merge), impact.flash);
-    }
+    applyMine(result, dir);
     ui.setScore(session.state.score, result.gained);
   }
   if (session.ended) gameOver();
@@ -181,6 +254,9 @@ ui.onAction((act) => {
   if (act === 'play' || act === 'again') startGame();
   if (act === 'quit' || act === 'close-settings') quit();
   if (act === 'settings') openSettings().then(ui.showSettings);
+  if (act === 'match') matchUi.showMatchNick();
+  if (act === 'match-cancel') quit();
+  if (act === 'match-again') findMatch(matchNick);
   if (act === 'close-ranking') {
     rankingView++;
     if (session) ui.backToOver();
@@ -197,12 +273,40 @@ ui.onAccountSubmit((nickname, password) => {
 });
 
 app.ticker.add(() => {
-  world.position.set((app.screen.width - BOARD_PX) / 2, (app.screen.height - BOARD_PX) / 2);
+  const { width: W, height: H } = app.screen;
+  const now = performance.now();
+  if (inMatch) {
+    // 좌우 절반의 가운데에 같은 크기로. 위쪽에 닉네임/점수가 들어갈 자리를 남긴다
+    const half = Math.min(1, (H * 0.7) / BOARD_PX, (W * 0.5 * 0.85) / BOARD_PX);
+    world.scale.set(half);
+    world.position.set(W * 0.25 - (BOARD_PX * half) / 2, (H - BOARD_PX * half) / 2);
+    theirsWorld.scale.set(half);
+    theirsWorld.position.set(W * 0.75 - (BOARD_PX * half) / 2, (H - BOARD_PX * half) / 2);
+    matchUi.setMatchBoardSize(BOARD_PX * half);
+    matchFlow.tick(now);
+    const { mine, theirs } = matchFlow;
+    if (mine && theirs) {
+      const live = matchFlow.phase === 'countdown' || matchFlow.phase === 'playing';
+      const meBar = matchFlow.myEnd ? 0 : Math.min(1, Math.max(0, mine.remaining(now) / mine.limit())); // 카운트다운 중에는 100%를 넘지 않게
+      matchUi.setMatchHud({
+        me: mine.state.score,
+        opponent: theirs.score,
+        remaining: live ? matchFlow.remaining(now) : 0,
+        meBar,
+        opponentBar: matchFlow.opponentTime(now),
+        countdown: matchFlow.countdown(now),
+      });
+      if (live) ui.setTime(meBar);
+    }
+  } else {
+    world.scale.set(1);
+    world.position.set((W - BOARD_PX) / 2, (H - BOARD_PX) / 2);
+  }
   particles.update(app.ticker.deltaMS / 1000);
   // 화면 오른쪽 절반의 가운데에, 창이 작으면 줄여서 놓는다
-  const fit = Math.min(1, (app.screen.height * 0.8) / BOARD_PX, (app.screen.width * 0.5 * 0.85) / BOARD_PX);
+  const fit = Math.min(1, (H * 0.8) / BOARD_PX, (W * 0.5 * 0.85) / BOARD_PX);
   demoWorld.scale.set(fit);
-  demoWorld.position.set(app.screen.width * 0.75 - (BOARD_PX * fit) / 2, (app.screen.height - BOARD_PX * fit) / 2);
+  demoWorld.position.set(W * 0.75 - (BOARD_PX * fit) / 2, (H - BOARD_PX * fit) / 2);
   if (demoWorld.visible && (demoWait -= app.ticker.deltaMS / 1000) <= 0) {
     const result = demoEnded ? null : demo.next();
     if (result) {
@@ -218,7 +322,6 @@ app.ticker.add(() => {
     }
   }
   if (!session || session.ended) return;
-  const now = performance.now();
   if (session.tick(now)) return gameOver();
   ui.setTime(Math.max(0, session.remaining(now) / session.limit()));
 });

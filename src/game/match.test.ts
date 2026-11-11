@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_TIMER } from '../constants';
 import { createGame, move, type Direction } from '../core/game';
 import type { ClientMessage, ServerMessage } from '../net/messages';
-import { Match } from './match';
+import { diffText, Match } from './match';
+import { timeLimit } from './timer';
 
 let sent: ClientMessage[];
 let online: boolean;
@@ -182,6 +183,25 @@ describe('진행', () => {
     m.handle({ type: 'result', outcome: 'lose', score: 0, opponentScore: 9, reason: 'normal' }, 5100); // 새 대기 중에 온 늦은 메시지
     expect(m.phase).toBe('waiting');
     expect(m.result).toBeNull();
+  });
+
+  it('상대 시간 바는 상대 입력이 도착한 시각부터 줄고, 끝나면 0이다', () => {
+    begin(); // 시작 시각 4000
+    expect(m.opponentTime(4000)).toBe(1);
+    expect(m.opponentTime(4000 + 1500)).toBeCloseTo(1 - 1.5 / timeLimit(0, DEFAULT_TIMER), 5);
+    m.handle({ type: 'move', dir: 'left', turn: 0 }, 6000);
+    const limit = timeLimit(1, DEFAULT_TIMER); // 1수 뒤의 제한 시간
+    expect(m.opponentTime(6000)).toBe(1); // 입력이 도착하면 다시 꽉 찬다
+    expect(m.opponentTime(6000 + (limit * 1000) / 2)).toBeCloseTo(0.5, 1);
+    expect(m.opponentTime(6000 + 100_000)).toBe(0);
+    m.handle({ type: 'opponent.over', score: 10, reason: 'stuck' }, 7000);
+    expect(m.opponentTime(7000)).toBe(0);
+  });
+
+  it('점수 차이는 앞선 쪽(내가 왼쪽, 상대가 오른쪽)을 가리킨다', () => {
+    expect(diffText(500, 180)).toBe('◀ +320');
+    expect(diffText(180, 500)).toBe('+320 ▶');
+    expect(diffText(70, 70)).toBe('0');
   });
 
   it('상태가 바뀔 때마다 onChange가 불린다', () => {

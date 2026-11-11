@@ -128,6 +128,7 @@ button.ghost:hover { background: #262626; filter: none; }
 .mside em { font-style: normal; font-size: 14px; font-weight: 700; color: #ff5c7a; }
 .mmid { position: absolute; left: 50%; top: calc(50% - var(--match-board) / 2 - 92px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; }
 .mmid b { font-size: 28px; font-weight: 900; color: var(--neon); }
+.mmid .notice { margin-top: 6px; color: #ff5c7a; white-space: nowrap; }
 .mmid span { font-size: 16px; font-weight: 600; color: var(--muted); }
 .mbar { position: absolute; width: var(--match-board); transform: translateX(-50%); top: calc(50% + var(--match-board) / 2 + 28px); height: 18px; border-radius: 999px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
 .mbar.left { left: 25%; }

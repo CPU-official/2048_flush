@@ -67,9 +67,16 @@ net.onChange = () => {
   ui.setMatchEnabled(net.connected);
   setConnected(net.connected);
   if (!net.connected && matchFlow.phase === 'waiting') quit(); // 대기 중에 끊기면 처음으로
+  if (net.connected) matchFlow.connected();
+  else matchFlow.disconnected(performance.now());
 };
 net.onMatch = (msg) => matchFlow.handle(msg, performance.now());
 matchFlow.onOpponentMove = (result) => theirsBoard.apply(result.events);
+matchFlow.onRestore = () => {
+  record = maxTile(matchFlow.mine!.state.board);
+  board.reset(matchFlow.mine!.state.board);
+  theirsBoard.reset(matchFlow.theirs!.board);
+};
 net.onChange();
 
 let vfx = true; // 이 PC 설정. 끄면 파티클과 보드 튕김을 생략한다
@@ -162,6 +169,8 @@ matchFlow.onChange = () => {
     matchUi.showMatchResult(r.outcome, forfeit ? mine!.state.score : r.score, forfeit ? theirs!.score : r.opponentScore, note);
   }
   matchUi.setMatchOver(matchFlow.myEnd !== null, matchFlow.opponentOver !== null);
+  matchUi.setMatchNotice(matchFlow.offline ? '재접속 중…' : matchFlow.opponentOffline ? '상대 재접속 대기 중…' : '');
+  if (phase === 'idle' && matchFlow.lost) quit(); // 재접속하지 못했다
 };
 
 function findMatch(nickname: string): void {

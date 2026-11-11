@@ -19,7 +19,7 @@ section.innerHTML = `
   <section data-screen="match" hidden>
     <div class="mside left"><span data-id="m-me-name"></span><b data-id="m-me-score" class="score">0</b><em data-id="m-me-over"></em></div>
     <div class="mside right"><span data-id="m-op-name"></span><b data-id="m-op-score" class="score">0</b><em data-id="m-op-over"></em></div>
-    <div class="mmid"><b data-id="m-diff">0</b><span data-id="m-time"></span></div>
+    <div class="mmid"><b data-id="m-diff">0</b><span data-id="m-time"></span><span data-id="m-notice" class="notice"></span></div>
     <div class="mbar left"><i data-id="m-me-bar"></i></div>
     <div class="mbar right"><i data-id="m-op-bar"></i></div>
     <div class="countdown" data-id="m-count" hidden></div>
@@ -105,6 +105,11 @@ export function setMatchHud(h: MatchHud): void {
 export function setMatchOver(me: boolean, opponent: boolean): void {
   el('m-me-over').textContent = me ? '종료' : '';
   el('m-op-over').textContent = opponent ? '종료' : '';
+}
+
+// 재접속 안내 (내 연결이 끊겼거나 상대가 끊겼을 때). 빈 문자열이면 지운다.
+export function setMatchNotice(text: string): void {
+  el('m-notice').textContent = text;
 }
 
 export function showMatchResult(outcome: 'win' | 'lose' | 'draw', me: number, opponent: number, note: string): void {

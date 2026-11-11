@@ -206,8 +206,9 @@
 | C→S | `gameover` | `score`, `maxTile`, `reason`(`stuck`, `timeout`(수당 제한 시간 초과), `matchTime`(대결 시간 상한)) (대결 판정용, 랭킹과 무관) |
 | S→C | `match.timeup` | (대결 시간 상한 도달 알림) |
 | S→C | `opponent.over` | `score`(상대 최종 점수), `reason` |
-| S→C | `opponent.status` | `offline`(끊김) 또는 `online`(복귀) |
-| C→S | `match.resume` | `id`, `slot` (재접속 시. 7-B에서 구현) |
+| S→C | `opponent.status` | `status`: `offline`(끊김) 또는 `online`(복귀). 상대에게만 보낸다 |
+| C→S | `match.resume` | `id`, `slot` (재접속 시. 새 연결이 끊긴 사람의 자리를 넘겨받는다) |
+| S→C | `match.restore` | `restore`: 재접속한 사람에게만 보내는 복원 정보. `id`, `slot`, `opponent`, `seed`, `timer`, `timeLimit`, `startIn`(게임 시작까지 남은 ms, 이미 시작했으면 음수), `timeUp`(시간 상한 알림이 이미 나갔는가), `mine`/`theirs`(각각 `moves`: 방향 배열(턴 번호는 순서), `over`: 끝났으면 `{ score, reason }` 아니면 `null`) |
 | S→C | `result` | `outcome`(`win`/`lose`/`draw`, 받는 사람 기준), `score`(내 점수), `opponentScore`, `reason`(`normal`/`timeLimit`/`forfeit`) |
 | C→S | `rank.submit` | 게임 id, 닉네임, 비밀번호, 점수, 최대 타일 (싱글 전용) |
 | S→C | `rank.ack` | 게임 `id`, `ok`(성공 여부), 실패 시 `error`(`password` 또는 `invalid`) |
@@ -216,7 +217,7 @@
 
 - 메시지는 JSON, 모든 메시지에 `type`을 둔다. 알 수 없는 타입은 무시한다. 타입 정의는 `src/net/messages.ts`가 기준이다.
 - 관리 함수는 호출된 순서대로 하나씩 실행한다 (버튼 연타로 서버가 두 번 뜨지 않게).
-- **구현 현황**: `config`, `rank.*`와 대결 서버 쪽(`match.find`/`cancel`/`found`, `start`, `move`, `gameover`, `opponent.over`, `match.timeup`, `result`)까지 구현했다. `match.resume`, `opponent.status`와 부전승(`forfeit`)은 7-B에서 구현한다. 그 전에는 진행 중인 대결에서 연결이 끊겨도 서버가 아무 처리를 하지 않는다 (대기 중이면 대기열에서만 빠진다).
+- **구현 현황**: `config`, `rank.*`와 대결 서버 쪽 전체(매칭, 중계, 판정, 끊김/재접속, 부전승)까지 구현했다. 클라이언트는 아직 없다 (7-C ~ 7-E).
 - **시작 시각은 절대 시각이 아니라 "남은 ms"로 보낸다.** PC마다 시계가 달라도 각 클라이언트가 `start`를 받은 시점부터 센다.
 - 멀티에서 시간 초과로 끝난 것은 입력이 아니라서 이동 로그에 남지 않는다. 그래서 `gameover`의 `reason: timeout`을 서버가 기록하고, 재접속 시 입력 로그와 함께 "종료됨" 상태를 내려준다.
 
@@ -233,8 +234,10 @@
 
 ## 예외 처리
 
-- **대결 중 재접속**: 서버가 두 사람의 입력 로그(와 종료 사유)를 보관한다. 끊긴 쪽이 `match.resume`으로 돌아오면 두 로그를 다시 보내 두 보드를 복원한다. 끊긴 동안 상대에게는 `opponent.status: offline`을 보낸다.
-- **재접속 시간 초과**: `RECONNECT_WAIT` 안에 돌아오지 않으면 서버가 `result`에 사유 `forfeit`를 담아 남은 사람의 승리로 끝낸다. 그동안 남은 사람은 자기 게임을 계속할 수 있고, 그 점수는 기록하지 않는다.
+- **대결 중 재접속**: 서버가 두 사람의 입력 로그와 종료 상태를 보관한다. 연결이 끊기면 상대에게 `opponent.status: offline`을 보내고, 끊긴 쪽이 새 연결로 `match.resume`을 보내면 `match.restore`로 두 로그를 돌려줘 두 보드를 복원한다 (상대에게는 `online`). 끊김을 아직 모르는 옛 연결이 남아 있어도 새 연결이 그 자리를 넘겨받는다. 끝난 대결, 없는 대결 id, 잘못된 `slot`은 무시한다.
+- **이미 끝낸 사람이 끊긴 경우**: 점수가 정해져 있으므로 기다리지 않고 부전승도 없다. 상대가 끝나면 점수대로 결과가 나고, 끊긴 사람에게는 보낼 수 없어 그냥 사라진다.
+- **둘 다 끊긴 경우**: 각자 `RECONNECT_WAIT` 타이머가 돈다. 한쪽이 돌아오면 이어지고, 먼저 만료된 쪽의 상대도 끊겨 있으면 결과 없이 정리한다.
+- **재접속 시간 초과**: `RECONNECT_WAIT` 안에 돌아오지 않으면 서버가 `result`에 사유 `forfeit`를 담아 남은 사람의 승리로 끝낸다. 그동안 남은 사람은 자기 게임을 계속할 수 있고, 그 점수는 기록하지 않는다. `forfeit`의 `score`/`opponentScore`는 `gameover`로 보고된 값이고 없으면 0이라, 클라이언트는 자기 점수를 로컬 값으로 보여 준다.
 - **대기열 이탈**: 대기 중에 연결이 끊기거나 `match.cancel`을 보내면 대기열에서 뺀다.
 - **서버 이탈**: 진행 중인 대결은 종료된다 (결과 없음). 서버 PC는 절전/자동 업데이트를 꺼 둔다.
 - **지연/유실**: WebSocket(TCP)이라 순서가 보장된다. 턴 번호로 중복/누락을 검출한다.

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_TIMER, MATCH_COUNTDOWN, MATCH_TIME_LIMIT } from '../../src/constants';
+import { DEFAULT_TIMER, MATCH_COUNTDOWN, MATCH_TIME_LIMIT, RECONNECT_WAIT } from '../../src/constants';
 import type { ServerMessage } from '../../src/net/messages';
 import { createMatches } from './match';
 
@@ -27,6 +27,7 @@ beforeEach(() => {
     send: (p, msg) => sent.push([p, msg]),
     timer: () => DEFAULT_TIMER,
     random: () => 0.5,
+    now: () => now,
     after: (ms, fn) => {
       const job = { at: now + ms, fn, live: true };
       jobs.push(job);
@@ -158,6 +159,128 @@ describe('대결 시간 상한', () => {
     m.close();
     advance((MATCH_COUNTDOWN + MATCH_TIME_LIMIT) * 1000 + 1);
     expect(to(1, 'match.timeup')).toEqual([]);
+    expect(m.status()).toEqual({ waiting: 0, matches: [] });
+  });
+});
+
+describe('끊김과 재접속', () => {
+  const restoreOf = (id: number) => (to(id, 'match.restore')[0] as Extract<ServerMessage, { type: 'match.restore' }>).restore;
+
+  it('끊기면 상대에게 offline을 알리고, 돌아와 resume하면 두 사람의 입력 로그로 복원하고 online을 알린다', () => {
+    pair();
+    m.handle(1, { type: 'move', dir: 'left', turn: 0 });
+    m.handle(2, { type: 'move', dir: 'up', turn: 0 });
+    m.handle(1, { type: 'move', dir: 'down', turn: 1 });
+    advance(5000); // 카운트다운이 끝나고 2초가 지났다
+    m.disconnect(1);
+    expect(to(2, 'opponent.status')).toEqual([{ type: 'opponent.status', status: 'offline' }]);
+    expect(m.status().matches).toEqual([['kim', 'lee']]); // 기다리는 동안 대결은 남아 있다
+
+    m.handle(10, { type: 'match.resume', id: '1', slot: 0 }); // 새 연결 10
+    expect(restoreOf(10)).toEqual({
+      id: '1', slot: 0, opponent: 'lee', seed: 2 ** 31 | 0, timer: DEFAULT_TIMER, timeLimit: MATCH_TIME_LIMIT,
+      startIn: MATCH_COUNTDOWN * 1000 - 5000, timeUp: false,
+      mine: { moves: ['left', 'down'], over: null },
+      theirs: { moves: ['up'], over: null },
+    });
+    expect(to(2, 'opponent.status')[1]).toEqual({ type: 'opponent.status', status: 'online' });
+
+    // 새 연결이 이어서 플레이한다
+    m.handle(10, { type: 'move', dir: 'right', turn: 2 });
+    expect(to(2, 'move').at(-1)).toEqual({ type: 'move', dir: 'right', turn: 2 });
+    advance(RECONNECT_WAIT * 1000 + 1);
+    expect(to(2, 'result')).toEqual([]); // 돌아왔으니 부전승은 없다
+  });
+
+  it('RECONNECT_WAIT 안에 돌아오지 않으면 남은 사람이 부전승하고, 다시 매칭할 수 있다', () => {
+    pair();
+    m.handle(2, { type: 'gameover', score: 80, maxTile: 16, reason: 'stuck' }); // 남은 사람은 먼저 끝났다
+    m.disconnect(1);
+    advance(RECONNECT_WAIT * 1000 - 1);
+    expect(to(2, 'result')).toEqual([]);
+    advance(1);
+    expect(to(2, 'result')).toEqual([{ type: 'result', outcome: 'win', score: 80, opponentScore: 0, reason: 'forfeit' }]);
+    expect(m.status().matches).toEqual([]);
+    m.handle(10, { type: 'match.resume', id: '1', slot: 0 }); // 이미 끝난 대결로는 돌아올 수 없다
+    expect(to(10, 'match.restore')).toEqual([]);
+    m.handle(2, { type: 'match.find', nickname: 'lee' });
+    expect(m.status().waiting).toBe(1);
+  });
+
+  it('둘 다 끊기면 결과 없이 정리된다', () => {
+    pair();
+    m.disconnect(1);
+    m.disconnect(2);
+    advance(RECONNECT_WAIT * 1000 + 1);
+    expect(to(1, 'result')).toEqual([]);
+    expect(to(2, 'result')).toEqual([]);
+    expect(m.status().matches).toEqual([]);
+  });
+
+  it('둘 다 끊겼어도 한 쪽이 돌아오면 이어진다', () => {
+    pair();
+    m.disconnect(1);
+    m.disconnect(2);
+    advance(RECONNECT_WAIT * 1000 - 1);
+    m.handle(11, { type: 'match.resume', id: '1', slot: 1 });
+    expect(restoreOf(11).opponent).toBe('kim');
+    advance(2);
+    expect(m.status().matches).toEqual([]); // 상대는 끝내 안 돌아와 정리된다 (돌아온 사람에게 부전승 결과)
+    expect(to(11, 'result')[0]).toMatchObject({ outcome: 'win', reason: 'forfeit' });
+  });
+
+  it('이미 끝낸 사람이 끊기면 기다리지 않고, 상대가 끝나면 점수대로 결과가 난다', () => {
+    pair();
+    over(1, 500);
+    m.disconnect(1);
+    advance(RECONNECT_WAIT * 1000 + 1);
+    expect(to(2, 'result')).toEqual([]); // 부전승이 아니다
+    over(2, 300);
+    expect(to(2, 'result')).toEqual([{ type: 'result', outcome: 'lose', score: 300, opponentScore: 500, reason: 'normal' }]);
+    expect(m.status().matches).toEqual([]);
+  });
+
+  it('복원에는 끝난 사람의 점수와 사유, 시간 상한 알림 여부가 들어간다', () => {
+    pair();
+    over(2, 120, 'timeout');
+    advance((MATCH_COUNTDOWN + MATCH_TIME_LIMIT) * 1000 + 10);
+    m.disconnect(1);
+    m.handle(10, { type: 'match.resume', id: '1', slot: 0 });
+    const r = restoreOf(10);
+    expect(r.timeUp).toBe(true);
+    expect(r.theirs.over).toEqual({ score: 120, reason: 'timeout' });
+    expect(r.startIn).toBe(-(MATCH_TIME_LIMIT * 1000 + 10));
+    expect(r.mine.over).toBeNull();
+  });
+
+  it('끊김을 모르는 옛 연결이 남아 있어도 새 연결이 슬롯을 넘겨받는다', () => {
+    pair();
+    m.handle(10, { type: 'match.resume', id: '1', slot: 0 });
+    expect(restoreOf(10).slot).toBe(0);
+    m.handle(1, { type: 'move', dir: 'up', turn: 0 }); // 옛 연결은 더 이상 대결에 속하지 않는다
+    expect(to(2, 'move')).toEqual([]);
+    m.handle(10, { type: 'move', dir: 'up', turn: 0 });
+    expect(to(2, 'move')).toHaveLength(1);
+    expect(to(2, 'opponent.status')).toEqual([]); // 끊김을 알린 적이 없으니 online도 보내지 않는다
+  });
+
+  it('잘못된 resume은 무시한다', () => {
+    pair();
+    m.disconnect(1);
+    for (const bad of [{ id: '9', slot: 0 }, { id: '1', slot: 2 }, { id: '1', slot: -1 }]) {
+      m.handle(10, { type: 'match.resume', ...bad } as never);
+    }
+    m.handle(2, { type: 'match.resume', id: '1', slot: 0 }); // 이미 대결 중인 연결
+    expect(to(10, 'match.restore')).toEqual([]);
+    expect(to(2, 'match.restore')).toEqual([]);
+  });
+
+  it('close는 부전승 예약도 취소한다', () => {
+    pair();
+    m.disconnect(1);
+    m.close();
+    advance(RECONNECT_WAIT * 1000 + 1);
+    expect(to(2, 'result')).toEqual([]);
     expect(m.status()).toEqual({ waiting: 0, matches: [] });
   });
 });

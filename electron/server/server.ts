@@ -48,6 +48,7 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
     },
     timer: () => timer,
     random: Math.random,
+    now: Date.now,
     after: (ms, fn) => {
       const t = setTimeout(fn, ms);
       return () => clearTimeout(t);
@@ -74,7 +75,7 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
         } else if (msg.type === 'rank.get') {
           const entries = msg.scope === 'player' ? listPlayer(data, msg.nickname ?? '', msg.top) : listAll(data, msg.top);
           send({ type: 'rank.list', scope: msg.scope, nickname: msg.nickname, entries });
-        } else if (msg.type === 'match.find' || msg.type === 'match.cancel' || msg.type === 'move' || msg.type === 'gameover') {
+        } else if (msg.type === 'match.find' || msg.type === 'match.cancel' || msg.type === 'match.resume' || msg.type === 'move' || msg.type === 'gameover') {
           matches.handle(id, msg);
         }
         // 알 수 없는 타입은 무시한다

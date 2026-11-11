@@ -15,6 +15,7 @@ export const RECORD_FLASH = 0.15; // 갱신 시 최소 번쩍임
 export const RECORD_BURST = 3; // 갱신한 머지의 파티클 배수 (전체 상한은 Particles가 지킨다)
 export const MATCH_COUNTDOWN = 3; // 초. 대결 카운트다운
 export const MATCH_TIME_LIMIT = 180; // 초. 대결 시간 상한 (카운트다운이 끝나 게임이 시작된 때부터 센다)
+export const RECONNECT_WAIT = 15; // 초. 대결 중 연결이 끊긴 사람을 기다리는 시간. 지나면 상대의 부전승
 export const GRACE = 0.15; // 초
 export const IDLE_LOGOUT = 60; // 초
 export const NICKNAME_MAX = 10;

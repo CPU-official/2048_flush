@@ -24,6 +24,27 @@ function read(storage: Store | undefined, key: string): unknown {
   }
 }
 
+// 연결 테스트: 주소로 접속이 되는지만 확인하고 바로 닫는다.
+export function testConnection(address: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(`ws://${address}`);
+    } catch {
+      return resolve(false);
+    }
+    const finish = (ok: boolean) => {
+      clearTimeout(timeout);
+      socket.onopen = socket.onerror = null;
+      socket.close();
+      resolve(ok);
+    };
+    const timeout = setTimeout(() => finish(false), REQUEST_TIMEOUT * 1000);
+    socket.onopen = () => finish(true);
+    socket.onerror = () => finish(false);
+  });
+}
+
 export class NetClient {
   // 서버가 내려준 마지막 제한 시간 설정. 받은 적이 없으면 초기값.
   timer: TimerSettings;

@@ -103,3 +103,10 @@ button.ghost:hover { background: #262626; filter: none; }
 .status { position: absolute; top: 18px; right: 22px; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
 .status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ff5c7a; }
 .status.on::before { background: var(--neon); box-shadow: 0 0 8px var(--neon); }
+
+.panel .row { display: flex; gap: 10px; align-items: center; justify-content: space-between; text-align: left; font-size: 17px; }
+.panel .row input { flex: 1; min-width: 0; font-size: 17px; padding: 13px 18px; }
+.panel .row button, .panel.wide > button { padding: 13px 22px; font-size: 16px; }
+.panel .label { margin: 12px 0 -4px; text-align: left; font-size: 14px; font-weight: 600; color: var(--muted); }
+.panel .address { margin: 0; font-size: 44px; font-weight: 900; color: var(--neon); text-shadow: 0 0 24px rgba(57, 255, 20, 0.4); user-select: text; }
+.panel.wide .note { margin: 4px 0; }

@@ -1,0 +1,113 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { DEFAULT_PORT } from '../src/constants';
+import { normalizeAddress, type AdminResult, type AppState } from '../src/net/admin';
+import { startServer, type RunningServer } from './server/server';
+
+type Config = Pick<AppState, 'mode' | 'serverAddress' | 'port' | 'vfx'>;
+
+function loadConfig(file: string): Config {
+  let saved = {};
+  try {
+    if (fs.existsSync(file)) saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    console.error('config.json을 읽지 못해 기본값을 씁니다:', err); // 손으로 고치다 깨져도 창은 열려야 한다
+  }
+  return { mode: 'client', serverAddress: '', port: DEFAULT_PORT, vfx: true, ...saved };
+}
+
+function lanIp(): string {
+  const all = Object.values(os.networkInterfaces()).flat();
+  return all.find((n) => n && n.family === 'IPv4' && !n.internal)?.address ?? '127.0.0.1';
+}
+
+// 관리 함수 모음. 설정 화면 버튼과 슬래시 커맨드가 같은 함수를 부른다 (규칙을 한 곳에만 둔다).
+// dir: config.json, ranking.json, server-settings.json이 놓이는 폴더 (Electron userData).
+export function createAdmin(dir: string) {
+  const file = path.join(dir, 'config.json');
+  const config = loadConfig(file);
+  let server: RunningServer | null = null;
+  let queue: Promise<unknown> = Promise.resolve(); // 명령을 한 번에 하나씩 실행한다 (서버 시작 연타 시 server 변수 경쟁 방지)
+
+  const state = (): AppState => ({
+    ...config,
+    running: server !== null,
+    lanAddress: `${lanIp()}:${server?.port ?? config.port}`,
+    connectTo: server ? `localhost:${server.port}` : config.serverAddress,
+  });
+  const done = (ok: boolean, message: string): AdminResult => ({ ok, message, state: state() });
+  const save = () => {
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify(config, null, 2));
+    fs.renameSync(`${file}.tmp`, file);
+  };
+
+  const commands: Record<string, (...args: unknown[]) => Promise<AdminResult>> = {
+    state: async () => done(true, ''),
+
+    'server.start': async (port = config.port) => {
+      if (server) return done(false, '서버가 이미 실행 중입니다.');
+      if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
+        return done(false, '포트는 1~65535 사이의 숫자여야 합니다.');
+      }
+      try {
+        server = await startServer(port, dir);
+      } catch (err) {
+        return done(false, `서버를 시작하지 못했습니다: ${(err as Error).message}`);
+      }
+      config.mode = 'server';
+      config.port = port;
+      save();
+      return done(true, `서버를 시작했습니다. 주소: ${state().lanAddress}`);
+    },
+
+    'server.stop': async () => {
+      if (!server) return done(false, '실행 중인 서버가 없습니다.');
+      await server.stop();
+      server = null;
+      config.mode = 'client';
+      save();
+      return done(true, '서버를 중지했습니다.');
+    },
+
+    connect: async (input) => {
+      const address = normalizeAddress(input);
+      if (!address) return done(false, '서버 주소는 IP 또는 IP:포트 형식이어야 합니다.');
+      config.serverAddress = address;
+      save();
+      return done(true, server ? `${address}를 저장했습니다. 서버 실행 중에는 이 PC의 서버를 씁니다.` : `${address}에 접속합니다.`);
+    },
+
+    disconnect: async () => {
+      config.serverAddress = '';
+      save();
+      return done(true, server ? '서버 주소를 지웠습니다. 서버 실행 중에는 이 PC의 서버를 씁니다.' : '접속을 해제했습니다.');
+    },
+
+    vfx: async (on) => {
+      config.vfx = on === true;
+      save();
+      return done(true, `VFX를 ${config.vfx ? '켰습니다' : '껐습니다'}.`);
+    },
+  };
+
+  return {
+    run: (name: string, ...args: unknown[]): Promise<AdminResult> => {
+      const result = queue.then(() =>
+        Object.hasOwn(commands, name) ? commands[name](...args) : done(false, `알 수 없는 명령입니다: ${name}`),
+      );
+      queue = result.catch(() => {});
+      return result.catch((err) => done(false, `실패했습니다: ${(err as Error).message}`)); // 저장 실패 등
+    },
+    // 앱 시작 시: 지난번에 서버 모드였으면 서버를 다시 띄운다. 실패해도 창은 열려야 한다.
+    init: async (): Promise<void> => {
+      if (config.mode !== 'server') return;
+      try {
+        const result = await commands['server.start'](config.port);
+        if (!result.ok) console.error(result.message);
+      } catch (err) {
+        console.error(err);
+      }
+    },
+  };
+}

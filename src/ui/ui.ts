@@ -11,7 +11,7 @@ root.innerHTML = `
       <button data-act="play">게임 플레이</button>
       <button disabled>대결</button>
       <button data-act="ranking" class="ghost">랭킹</button>
-      <button disabled>설정</button>
+      <button data-act="settings" class="ghost" ${window.api ? '' : 'disabled'}>설정</button>
     </nav>
   </section>
   <section data-screen="game" hidden>
@@ -42,6 +42,9 @@ root.innerHTML = `
       <button data-act="ranking" class="ghost">랭킹</button>
       <button data-act="quit" class="ghost">종료</button>
     </div>
+  </section>
+  <section data-screen="settings" class="popup" hidden>
+    <div class="panel wide" data-id="settings"></div>
   </section>
   <section data-screen="ranking" class="popup" hidden>
     <div class="panel wide">
@@ -82,6 +85,10 @@ export function onAccountSubmit(handler: (nickname: string, password: string) =>
 export function showStart(): void {
   show('start');
   setTime(1);
+}
+
+export function showSettings(): void {
+  show('start', 'settings');
 }
 
 export function showGame(nickname: string | null): void {

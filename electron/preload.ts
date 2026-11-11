@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+// 관리 함수(electron/admin.ts) 호출 하나만 노출한다.
 contextBridge.exposeInMainWorld('api', {
-  serverAddress: (): Promise<string> => ipcRenderer.invoke('server-address'),
+  admin: (name: string, ...args: unknown[]) => ipcRenderer.invoke('admin', name, ...args),
 });

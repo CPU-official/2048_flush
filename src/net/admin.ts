@@ -1,4 +1,5 @@
 import { DEFAULT_PORT } from '../constants';
+import type { TimerSettings } from '../game/timer';
 
 // 관리 함수(electron/admin.ts)와 렌더러가 공유하는 타입. ws 프로토콜과는 별개다.
 export interface AppState {
@@ -8,6 +9,7 @@ export interface AppState {
   vfx: boolean;
   running: boolean; // 이 PC에서 서버가 실행 중인가
   lanAddress: string; // 다른 PC가 접속할 이 PC의 "IP:포트"
+  timer: TimerSettings | null; // 서버가 쓰는 제한 시간 설정. 서버가 실행 중일 때만 있다
   connectTo: string; // 이 PC의 클라이언트가 접속할 주소. 서버 실행 중이면 localhost
 }
 

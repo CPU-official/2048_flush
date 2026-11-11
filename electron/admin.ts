@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { validateTimer, type TimerSettings } from '../src/game/timer';
 import { DEFAULT_PORT } from '../src/constants';
 import { normalizeAddress, type AdminResult, type AppState } from '../src/net/admin';
 import { startServer, type RunningServer } from './server/server';
@@ -34,6 +35,7 @@ export function createAdmin(dir: string) {
     ...config,
     running: server !== null,
     lanAddress: `${lanIp()}:${server?.port ?? config.port}`,
+    timer: server?.timer ?? null,
     connectTo: server ? `localhost:${server.port}` : config.serverAddress,
   });
   const done = (ok: boolean, message: string): AdminResult => ({ ok, message, state: state() });
@@ -68,6 +70,15 @@ export function createAdmin(dir: string) {
       config.mode = 'client';
       save();
       return done(true, '서버를 중지했습니다.');
+    },
+
+    'timer.set': async (timer) => {
+      if (!server) return done(false, '서버가 실행 중일 때만 바꿀 수 있습니다.');
+      const error = validateTimer(timer);
+      if (error) return done(false, error);
+      const { start, maxReduction, midMove, steepness } = timer as TimerSettings;
+      server.setTimer({ start, maxReduction, midMove, steepness });
+      return done(true, '제한 시간을 저장했습니다. 다음 게임부터 적용됩니다.');
     },
 
     connect: async (input) => {

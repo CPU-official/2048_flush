@@ -34,6 +34,7 @@ function render({ state, message }: AdminResult): void {
     <p data-id="settings-message" class="note"></p>
     <button data-act="close-settings" class="ghost">닫기</button>`;
   // 저장된 값은 innerHTML이 아니라 속성으로 넣는다
+  if (state.timer) for (const [name] of TIMER_FIELDS) input(name).value = String(state.timer[name]);
   if (!state.running) {
     input('address').value = state.serverAddress;
     input('port').value = String(state.port);
@@ -46,10 +47,20 @@ function render({ state, message }: AdminResult): void {
   };
 }
 
+const TIMER_FIELDS = [
+  ['start', '시작값(초)'],
+  ['maxReduction', '최대감소값(초)'],
+  ['midMove', '중간수'],
+  ['steepness', '기울기'],
+] as const;
+
 const serverMode = (state: AppState) => `
     <p class="label">서버 실행 중 · 다른 PC의 설정에 이 주소를 입력하세요</p>
     <p class="address">${state.lanAddress}</p>
-    <button data-set="stop" class="ghost">서버 중지</button>`;
+    <button data-set="stop" class="ghost">서버 중지</button>
+    <p class="label">수당 제한 시간 (다음 게임부터 적용)</p>
+    ${TIMER_FIELDS.map(([name, label]) => `<div class="row"><span>${label}</span><input name="${name}" inputmode="decimal" autocomplete="off" /></div>`).join('')}
+    <button data-set="timer" class="ghost">저장</button>`;
 
 const clientMode = () => `
     <p class="label">서버 주소 (IP:포트)</p>
@@ -60,6 +71,11 @@ const clientMode = () => `
 
 async function act(action: string, state: AppState): Promise<void> {
   if (action === 'vfx') return render(await run('vfx', !state.vfx));
+  if (action === 'timer') {
+    // 빈 칸은 Number('')=0이 되므로 NaN으로 바꿔 서버 검증에서 걸리게 한다
+    const num = (name: string) => (input(name).value.trim() === '' ? NaN : Number(input(name).value));
+    return void say((await run('timer.set', Object.fromEntries(TIMER_FIELDS.map(([name]) => [name, num(name)])))).message);
+  }
   if (action === 'stop') return render(await run('server.stop'));
   if (action === 'start') return render(await run('server.start', Number(input('port').value)));
   if (action === 'connect') {

@@ -38,6 +38,7 @@ root.innerHTML = `
       <p data-id="final" class="score"></p>
       <p data-id="note" class="note"></p>
       <button data-act="again">계속 플레이</button>
+      <button data-act="ranking" class="ghost">랭킹</button>
       <button data-act="quit" class="ghost">종료</button>
     </div>
   </section>
@@ -112,11 +113,17 @@ export function showOver(reason: EndReason, score: number, note: string): void {
   el('reason').textContent = REASON_TEXT[reason];
   el('final').textContent = String(score);
   el('note').textContent = note;
+  form.reset(); // 공용 PC라 입력한 닉네임/비밀번호를 화면 밖에도 남기지 않는다
   show('game', 'over');
 }
 
-// entries가 없으면 message만 보여 준다.
-export function showRanking(scope: RankScope, entries: RankEntry[], message: string): void {
+// 랭킹을 닫고 계속 플레이 / 종료 팝업으로 돌아온다 (내용은 그대로 남아 있다).
+export function backToOver(): void {
+  show('game', 'over');
+}
+
+// entries가 없으면 message만 보여 준다. inGame: 게임 오버 팝업에서 열었는지.
+export function showRanking(scope: RankScope, entries: RankEntry[], message: string, inGame: boolean): void {
   for (const tab of ['all', 'player']) {
     root.querySelector(`[data-act="tab-${tab}"]`)!.classList.toggle('on', tab === scope);
   }
@@ -129,7 +136,7 @@ export function showRanking(scope: RankScope, entries: RankEntry[], message: str
     }),
   );
   el('rank-message').textContent = message;
-  show('start', 'ranking');
+  show(inGame ? 'game' : 'start', 'ranking');
 }
 
 export function setScore(score: number, gained: number): void {

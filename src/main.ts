@@ -95,10 +95,11 @@ async function submitRecord(who: Account): Promise<void> {
 
 async function openRanking(scope: RankScope): Promise<void> {
   const view = ++rankingView;
-  if (scope === 'player' && !account) return ui.showRanking(scope, [], '기록 후 확인할 수 있어요');
+  const inGame = session !== null; // 게임 오버 팝업에서 열었으면 닫을 때 그 팝업으로 돌아간다
+  if (scope === 'player' && !account) return ui.showRanking(scope, [], '기록 후 확인할 수 있어요', inGame);
   const entries = await net.ranking(scope, scope === 'player' ? account!.nickname : undefined, RANK_TOP);
   if (view !== rankingView) return; // 응답을 기다리는 사이 닫았거나 다른 탭을 눌렀다
-  ui.showRanking(scope, entries ?? [], entries ? (entries.length ? '' : '아직 기록이 없어요') : '서버 연결 안 됨');
+  ui.showRanking(scope, entries ?? [], entries ? (entries.length ? '' : '아직 기록이 없어요') : '서버 연결 안 됨', inGame);
 }
 
 window.addEventListener('keydown', (e) => {
@@ -125,7 +126,12 @@ window.addEventListener('pointermove', () => {
 
 ui.onAction((act) => {
   if (act === 'play' || act === 'again') startGame();
-  if (act === 'quit' || act === 'close-ranking') quit();
+  if (act === 'quit') quit();
+  if (act === 'close-ranking') {
+    rankingView++;
+    if (session) ui.backToOver();
+    else quit();
+  }
   if (act === 'ranking' || act === 'tab-all') openRanking('all');
   if (act === 'tab-player') openRanking('player');
 });

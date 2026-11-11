@@ -4,6 +4,7 @@ import type { RankEntry, RankScope } from '../net/messages';
 
 const root = document.getElementById('ui')!;
 root.innerHTML = `
+  <div data-id="status" class="status"></div>
   <section data-screen="start" class="start">
     <h1 class="logo">2048</h1>
     <nav class="menu">
@@ -137,6 +138,13 @@ export function showRanking(scope: RankScope, entries: RankEntry[], message: str
   );
   el('rank-message').textContent = message;
   show(inGame ? 'game' : 'start', 'ranking');
+}
+
+// 화면 구석의 서버 연결 상태. pending: 오프라인 큐에 쌓인 기록 수.
+export function setStatus(connected: boolean, pending: number): void {
+  const status = el('status');
+  status.classList.toggle('on', connected);
+  status.textContent = (connected ? '연결됨' : '끊김') + (pending ? ` · 대기 중 ${pending}건` : '');
 }
 
 export function setScore(score: number, gained: number): void {

@@ -30,6 +30,8 @@ world.addChild(board, particles);
 app.stage.addChild(world);
 
 const net = new NetClient();
+net.onChange = () => ui.setStatus(net.connected, net.queue.length);
+net.onChange();
 window.api?.serverAddress().then((address) => {
   if (address) net.connect(address);
 });
@@ -89,8 +91,7 @@ async function submitRecord(who: Account): Promise<void> {
     return;
   }
   account = who;
-  // shortcut: 오프라인이면 기록을 버린다, 오프라인 큐(구현 순서 4번)에서 저장으로 바꾼다
-  ui.showOver(session!.ended!, score, error === 'offline' ? '서버에 연결되지 않아 기록하지 못했어요.' : '');
+  ui.showOver(session!.ended!, score, error === 'offline' ? '서버에 연결되지 않았어요. 연결되면 자동으로 기록돼요.' : '');
 }
 
 async function openRanking(scope: RankScope): Promise<void> {

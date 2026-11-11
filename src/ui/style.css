@@ -99,3 +99,7 @@ button.ghost:hover { background: #262626; filter: none; }
 .rank li:nth-child(-n + 3) span:nth-child(1) { color: var(--neon); }
 .rank:empty { display: none; }
 .rank:empty + .note { margin: 40px 0; min-height: 280px; display: grid; place-items: center; font-size: 18px; }
+
+.status { position: absolute; top: 18px; right: 22px; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--muted); background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+.status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ff5c7a; }
+.status.on::before { background: var(--neon); box-shadow: 0 0 8px var(--neon); }

@@ -28,6 +28,7 @@ const say = (text: string) => (panel.querySelector('[data-id="settings-message"]
 
 function render({ state, message }: AdminResult): void {
   confirmReset = false;
+  confirmDelete = null;
   panel.innerHTML = `
     <h2>설정</h2>
     <div class="row"><span>VFX (이 PC)</span><button data-set="vfx" class="ghost">${state.vfx ? '켜짐' : '꺼짐'}</button></div>
@@ -40,11 +41,12 @@ function render({ state, message }: AdminResult): void {
     input('address').value = state.serverAddress;
     input('port').value = String(state.port);
   }
+  state.users?.forEach((nick) => panel.querySelector('[data-id="users"]')!.append(userRow(nick)));
   say(message);
   setConnected(connected);
   panel.onclick = (e) => {
-    const action = (e.target as HTMLElement).dataset.set;
-    if (action) act(action, state);
+    const el = e.target as HTMLElement;
+    if (el.dataset.set) act(el.dataset.set, state, el);
   };
 }
 
@@ -63,7 +65,9 @@ const serverMode = (state: AppState) => `
     ${TIMER_FIELDS.map(([name, label]) => `<div class="row"><span>${label}</span><input name="${name}" inputmode="decimal" autocomplete="off" /></div>`).join('')}
     <button data-set="timer" class="ghost">저장</button>
     <p class="label">랭킹 관리</p>
-    <div class="row"><button data-set="export" class="ghost">CSV 내보내기</button><button data-set="reset" class="ghost">랭킹 초기화</button></div>`;
+    <div class="row"><button data-set="export" class="ghost">CSV 내보내기</button><button data-set="reset" class="ghost">랭킹 초기화</button></div>
+    <p class="label">사용자 관리 (현재 비밀번호는 보이지 않습니다)</p>
+    <div class="users" data-id="users"></div>`;
 
 const clientMode = () => `
     <p class="label">서버 주소 (IP:포트)</p>
@@ -72,6 +76,35 @@ const clientMode = () => `
     <p class="label">이 PC를 서버로 쓰기 (포트)</p>
     <div class="row"><input name="port" inputmode="numeric" autocomplete="off" /><button data-set="start" class="ghost">서버 시작</button></div>`;
 
+// 닉네임은 아무 글자나 올 수 있어 innerHTML이 아니라 DOM으로 만든다
+function userRow(nick: string): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'row';
+  const name = document.createElement('span');
+  name.textContent = nick;
+  name.title = nick;
+  const pw = document.createElement('input');
+  Object.assign(pw, { maxLength: 4, placeholder: '새 비밀번호', autocomplete: 'off' });
+  pw.inputMode = 'numeric';
+  row.append(name, pw);
+  for (const [set, label] of [['pw', '변경'], ['del', '삭제']]) {
+    const button = document.createElement('button');
+    button.className = 'ghost';
+    button.dataset.set = set;
+    button.dataset.nick = nick;
+    button.textContent = label;
+    row.append(button);
+  }
+  return row;
+}
+
+let confirmDelete: HTMLElement | null = null; // 삭제 확인 중인 버튼. 삭제는 두 번 눌러야 실행된다
+function deleteButton(button: HTMLElement | null): void {
+  if (confirmDelete) confirmDelete.textContent = '삭제';
+  confirmDelete = button;
+  if (button) button.textContent = '정말 삭제';
+}
+
 let confirmReset = false; // 초기화는 두 번 눌러야 실행된다
 function resetButton(confirming: boolean): void {
   confirmReset = confirming;
@@ -79,8 +112,9 @@ function resetButton(confirming: boolean): void {
   if (button) button.textContent = confirming ? '정말 초기화' : '랭킹 초기화';
 }
 
-async function act(action: string, state: AppState): Promise<void> {
+async function act(action: string, state: AppState, el: HTMLElement): Promise<void> {
   if (action !== 'reset') resetButton(false); // 다른 버튼을 누르면 초기화 확인이 풀린다
+  if (action !== 'del') deleteButton(null);
   if (action === 'vfx') return render(await run('vfx', !state.vfx));
   if (action === 'timer') {
     // 빈 칸은 Number('')=0이 되므로 NaN으로 바꿔 서버 검증에서 걸리게 한다
@@ -95,6 +129,20 @@ async function act(action: string, state: AppState): Promise<void> {
     }
     resetButton(false); // 실행이 끝나기 전의 연타가 두 번 실행되지 않게 바로 푼다
     return render(await run('ranking.reset'));
+  }
+  if (action === 'pw') {
+    const box = el.closest('.row')!.querySelector('input')!;
+    const result = await run('user.password', el.dataset.nick, box.value);
+    if (result.ok) box.value = '';
+    return void say(result.message);
+  }
+  if (action === 'del') {
+    if (confirmDelete !== el) {
+      deleteButton(el);
+      return void say(`${el.dataset.nick}과(와) 그 기록이 지워집니다 (백업 없음). 계속하려면 한 번 더 누르세요.`);
+    }
+    deleteButton(null);
+    return render(await run('user.delete', el.dataset.nick));
   }
   if (action === 'stop') return render(await run('server.stop'));
   if (action === 'start') return render(await run('server.start', Number(input('port').value)));

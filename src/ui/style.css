@@ -87,6 +87,10 @@ button.ghost:hover { background: #262626; filter: none; }
 .panel input::placeholder { color: #555; font-weight: 600; }
 
 .panel.wide { width: 520px; padding-top: 28px; }
+.panel.wide[data-id="settings"] { max-height: 92vh; overflow-y: auto; }
+.panel .users { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
+.panel .users .row input { max-width: 130px; }
+.panel .users .row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabs { display: flex; gap: 8px; }
 .tabs button { flex: 1; padding: 14px; font-size: 18px; color: var(--muted); }
 .tabs button.on { background: #2a2a2a; color: var(--neon); }

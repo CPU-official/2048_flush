@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { DEFAULT_PORT } from '../src/constants';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_PORT, DEFAULT_TIMER } from '../src/constants';
 import { normalizeAddress } from '../src/net/admin';
-import { testConnection } from '../src/net/client';
+import { NetClient, testConnection } from '../src/net/client';
 import { createAdmin } from './admin';
 
 const freePort = () =>
@@ -72,6 +72,33 @@ describe('admin', () => {
     expect(result.state.running).toBe(false);
     expect(fs.existsSync(path.join(dir, 'config.json'))).toBe(false);
     await other.run('server.stop');
+  });
+
+  it('제한 시간 저장: 검증, 접속 중인 클라이언트에 전달, 재시작 후 유지', async () => {
+    const timer = { start: 4, maxReduction: 2.5, midMove: 30, steepness: 0.2 };
+    expect((await admin.run('timer.set', timer)).message).toContain('실행 중일 때만'); // 서버가 없을 때
+    const port = await freePort();
+    expect((await admin.run('state')).state.timer).toBeNull();
+    expect((await admin.run('server.start', port)).state.timer).toEqual(DEFAULT_TIMER);
+
+    for (const bad of [{ ...timer, start: 0 }, { ...timer, start: -1 }, { ...timer, start: 2, maxReduction: 1.6 }, { ...timer, midMove: NaN }, { ...timer, steepness: '0.1' }, null]) {
+      const r = await admin.run('timer.set', bad);
+      expect(r.ok).toBe(false);
+      expect(r.state.timer).toEqual(DEFAULT_TIMER);
+    }
+    expect(fs.existsSync(path.join(dir, 'server-settings.json'))).toBe(false);
+    expect((await admin.run('timer.set', { ...timer, start: 0.7, maxReduction: 0.2 })).ok).toBe(true); // 정확히 MIN_LIMIT은 허용
+    await admin.run('timer.set', timer);
+
+    const client = new NetClient();
+    client.connect(`localhost:${port}`);
+    await vi.waitFor(() => expect(client.connected).toBe(true));
+    expect((await admin.run('timer.set', { ...timer, extra: 1 })).ok).toBe(true);
+    await vi.waitFor(() => expect(client.timer).toEqual(timer));
+    client.disconnect();
+
+    await admin.run('server.stop');
+    expect((await admin.run('server.start', port)).state.timer).toEqual(timer);
   });
 
   it('서버 시작을 동시에 불러도 하나만 뜬다', async () => {

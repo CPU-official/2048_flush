@@ -8,6 +8,8 @@ import { listAll, listPlayer, load, save, submit } from './ranking';
 
 export interface RunningServer {
   port: number;
+  timer: TimerSettings;
+  setTimer(timer: TimerSettings): void; // 저장하고 접속 중인 클라이언트에 다시 보낸다
   stop(): Promise<void>;
 }
 
@@ -22,7 +24,8 @@ function loadTimer(dir: string): TimerSettings {
 export async function startServer(port: number, dir: string): Promise<RunningServer> {
   const rankingFile = path.join(dir, 'ranking.json');
   const data = load(rankingFile);
-  const timer = loadTimer(dir);
+  let timer = loadTimer(dir);
+  const settingsFile = path.join(dir, 'server-settings.json');
   const wss = new WebSocketServer({ port });
   const backup = setInterval(() => {
     if (fs.existsSync(rankingFile)) fs.copyFileSync(rankingFile, path.join(dir, 'ranking.backup.json'));
@@ -55,6 +58,14 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
     wss.once('listening', () =>
       resolve({
         port: (wss.address() as { port: number }).port,
+        get timer() {
+          return timer;
+        },
+        setTimer: (next) => {
+          fs.writeFileSync(settingsFile, JSON.stringify({ timer: next }, null, 2));
+          timer = next;
+          for (const client of wss.clients) client.send(JSON.stringify({ type: 'config', timer }));
+        },
         stop: () => {
           clearInterval(backup);
           for (const client of wss.clients) client.terminate();

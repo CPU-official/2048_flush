@@ -73,10 +73,11 @@ export function createAdmin(dir: string) {
       return done(true, '서버를 중지했습니다.');
     },
 
-    // 대기열/대결 목록은 7번 단계(1대1 대결)가 생기기 전까지 비어 있다
     'server.status': async () => {
       if (!server) return done(false, '서버가 실행 중이 아닙니다.');
-      return done(true, `서버 ${state().lanAddress} · 접속자 ${server.clients()}명 · 대기 중 0명 · 진행 중인 대결 없음`);
+      const { waiting, matches } = server.matchStatus();
+      const list = matches.map(([a, b]) => `${a} vs ${b}`).join(', ');
+      return done(true, `서버 ${state().lanAddress} · 접속자 ${server.clients()}명 · 대기 중 ${waiting}명 · 진행 중인 대결 ${matches.length ? `${matches.length}건 (${list})` : '없음'}`);
     },
 
     'timer.set': async (timer) => {

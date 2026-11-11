@@ -99,13 +99,13 @@
 | `timer.set` | `{ start, maxReduction, midMove, steepness }` | 제한 시간 저장 (서버 실행 중에만). 검증은 `validateTimer`: 네 값이 모두 숫자, 시작값 > 0, 시작값 - 최대감소값 ≥ `MIN_LIMIT`. 통과하면 `server-settings.json`에 저장하고 접속 중인 모든 클라이언트에 `config`를 다시 보낸다 |
 | `user.delete` | 닉네임 | 닉네임과 그 닉네임의 기록을 함께 지운다 (서버 실행 중에만, 백업 없음) |
 | `user.password` | 닉네임, 새 비밀번호 | 비밀번호를 4자리 숫자 문자열로 바꾼다 (서버 실행 중에만). 결과 `message`에 비밀번호를 넣지 않는다 |
-| `server.status` | — | 서버 주소, 접속자 수, 대기 중인 사람, 진행 중인 대결을 한 줄로 돌려준다 (서버 실행 중에만). 대기 중 0명, 대결 없음은 7번 단계(대결) 전까지 고정이다 |
+| `server.status` | — | 서버 주소, 접속자 수, 대기 중인 사람 수, 진행 중인 대결(`닉네임 vs 닉네임`)을 한 줄로 돌려준다 (서버 실행 중에만) |
 | `ranking.export` | — | 랭킹을 CSV로 내보낸다 (서버 실행 중에만). 파일 경로를 `message`로 돌려준다 |
 | `ranking.reset` | — | 랭킹을 백업한 뒤 초기화한다 (서버 실행 중에만). 확인 절차는 호출하는 쪽이 맡고 이 함수는 항상 백업 후 실행한다 |
 
 - 관리 함수는 호출된 순서대로 하나씩 실행한다 (버튼 연타로 서버가 두 번 뜨지 않게).
 - 바뀐 제한 시간은 **다음 게임부터** 적용된다 (클라이언트는 `config`를 받으면 `net.timer`만 갱신하고, 진행 중인 게임의 세션은 시작할 때 받은 값을 계속 쓴다). `state`의 `timer`는 서버가 실행 중일 때만 값이 있다.
-- **구현 현황**: 설정 화면과 슬래시 커맨드까지 구현했다. 대기열과 대결 현황은 7번 단계에서 채운다.
+- **구현 현황**: 설정 화면과 슬래시 커맨드까지 구현했다.
 
 ### 클라이언트 접속
 
@@ -197,18 +197,18 @@
 | 방향 | 타입 | 내용 |
 |---|---|---|
 | S→C | `config` | `timer`: 제한 시간 설정(`start`, `maxReduction`, `midMove`, `steepness`). 접속 직후 전송 |
-| C→S | `match.find` | 닉네임 (대기열에 들어감) |
+| C→S | `match.find` | `nickname` (대기열에 들어감. 앞뒤 공백을 지운 1~`NICKNAME_MAX`자. 이미 대기/대결 중이거나 형식이 틀리면 무시) |
 | C→S | `match.cancel` | (대기 취소) |
-| S→C | `match.found` | 대결 id, 상대 닉네임 |
-| S→C | `start` | 대결 id, 시드, **시작까지 남은 ms**, 그 시점의 제한 시간 설정, 대결 시간 상한 |
-| C→S | `move` | 방향, 턴 번호 |
-| S→C | `move` | 방향, 턴 번호 (상대 입력 중계) |
-| C→S | `gameover` | 최종 점수, 최대 타일, `reason`(`stuck`, `timeout`(수당 제한 시간 초과), `matchTime`(대결 시간 상한)) (대결 판정용, 랭킹과 무관) |
+| S→C | `match.found` | `id`(대결 id), `opponent`(상대 닉네임), `slot`(0 또는 1. 먼저 대기한 사람이 0. 재접속 때 본인을 가리키는 값이라 클라이언트는 메모리에만 보관한다) |
+| S→C | `start` | `id`, `seed`, `startIn`(**시작까지 남은 ms**), `timer`(그 시점의 제한 시간 설정), `timeLimit`(대결 시간 상한, 초) |
+| C→S | `move` | `dir`, `turn`(0부터. 서버는 값을 검사하지 않고 그대로 중계) |
+| S→C | `move` | `dir`, `turn` (상대 입력 중계. 상대에게만 보낸다) |
+| C→S | `gameover` | `score`, `maxTile`, `reason`(`stuck`, `timeout`(수당 제한 시간 초과), `matchTime`(대결 시간 상한)) (대결 판정용, 랭킹과 무관) |
 | S→C | `match.timeup` | (대결 시간 상한 도달 알림) |
-| S→C | `opponent.over` | 상대 최종 점수, `reason` |
+| S→C | `opponent.over` | `score`(상대 최종 점수), `reason` |
 | S→C | `opponent.status` | `offline`(끊김) 또는 `online`(복귀) |
-| C→S | `match.resume` | 대결 id (재접속 시) |
-| S→C | `result` | 승패(`win`/`lose`/`draw`), 양쪽 점수, 사유(`normal`/`timeLimit`/`forfeit`) |
+| C→S | `match.resume` | `id`, `slot` (재접속 시. 7-B에서 구현) |
+| S→C | `result` | `outcome`(`win`/`lose`/`draw`, 받는 사람 기준), `score`(내 점수), `opponentScore`, `reason`(`normal`/`timeLimit`/`forfeit`) |
 | C→S | `rank.submit` | 게임 id, 닉네임, 비밀번호, 점수, 최대 타일 (싱글 전용) |
 | S→C | `rank.ack` | 게임 `id`, `ok`(성공 여부), 실패 시 `error`(`password` 또는 `invalid`) |
 | C→S | `rank.get` | `scope`(`all` 또는 `player`), `nickname`(`player`일 때), `top`(상위 N) |
@@ -216,17 +216,19 @@
 
 - 메시지는 JSON, 모든 메시지에 `type`을 둔다. 알 수 없는 타입은 무시한다. 타입 정의는 `src/net/messages.ts`가 기준이다.
 - 관리 함수는 호출된 순서대로 하나씩 실행한다 (버튼 연타로 서버가 두 번 뜨지 않게).
-- **구현 현황**: `config`, `rank.*`만 구현돼 있다. 대결 관련 메시지는 구현 순서 7번에서 추가한다.
+- **구현 현황**: `config`, `rank.*`와 대결 서버 쪽(`match.find`/`cancel`/`found`, `start`, `move`, `gameover`, `opponent.over`, `match.timeup`, `result`)까지 구현했다. `match.resume`, `opponent.status`와 부전승(`forfeit`)은 7-B에서 구현한다. 그 전에는 진행 중인 대결에서 연결이 끊겨도 서버가 아무 처리를 하지 않는다 (대기 중이면 대기열에서만 빠진다).
 - **시작 시각은 절대 시각이 아니라 "남은 ms"로 보낸다.** PC마다 시계가 달라도 각 클라이언트가 `start`를 받은 시점부터 센다.
 - 멀티에서 시간 초과로 끝난 것은 입력이 아니라서 이동 로그에 남지 않는다. 그래서 `gameover`의 `reason: timeout`을 서버가 기록하고, 재접속 시 입력 로그와 함께 "종료됨" 상태를 내려준다.
 
 ## 대결 진행 흐름 (1대1)
 
+- 대결 로직은 `electron/server/match.ts`의 순수 함수 `createMatches`(전송, 시계, 난수를 주입받는다)에 있고, `server.ts`가 ws 연결을 연결 id로 이어 준다. 끝난 대결은 정리돼 두 사람 모두 다시 `match.find`를 보낼 수 있다. 서버를 멈추면 진행 중인 대결은 결과 없이 사라진다.
+
 1. 클라이언트가 `match.find`를 보내면 서버가 대기열에 넣는다. 이미 대기 중인 사람이 있으면 **선착순으로 둘을 묶어** 대결을 만든다 (방 코드 없음, 동시에 여러 대결 가능).
 2. 서버가 양쪽에 `match.found`를 보낸 뒤 시드를 정하고 `start`를 보낸다 (`start`에는 그 시점의 제한 시간 설정이 들어 있어 두 사람이 같은 규칙을 쓴다).
 3. 양쪽이 카운트다운(`MATCH_COUNTDOWN`) 후 **동시 시작**. 이동은 `move`로 서로에게 중계된다.
 4. 한 사람이 끝나면 `gameover`를 보내고, 서버가 상대에게 `opponent.over`를 전달한다.
-5. **종료 판정**(서버가 한다): 양쪽 `gameover`가 모두 오면 끝낸다. 대결 시작 후 `MATCH_TIME_LIMIT`이 지나면 서버가 양쪽에 `match.timeup`을 보내고, 클라이언트는 현재 점수로 `gameover(reason: matchTime)`을 보낸다. 점수는 클라이언트가 보고한 값을 그대로 신뢰한다 (재검증 없음).
+5. **종료 판정**(서버가 한다): 양쪽 `gameover`가 모두 오면 끝낸다. 카운트다운이 끝나 게임이 시작된 때부터 `MATCH_TIME_LIMIT`이 지나면 서버가 양쪽에 `match.timeup`을 보내고, 클라이언트는 현재 점수로 `gameover(reason: matchTime)`을 보낸다. 점수는 클라이언트가 보고한 값을 그대로 신뢰한다 (재검증 없음).
 6. 서버가 점수가 높은 쪽을 승자로 하는 `result`를 양쪽에 보낸다. 점수가 같으면 `draw`.
 
 ## 예외 처리

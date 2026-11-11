@@ -12,7 +12,7 @@ const note = bar.querySelector('p')!;
 
 // 시작 화면만 보일 때(설정·랭킹 팝업이 없을 때)만 `/`로 연다. 설정 화면의 입력칸에 치는 `/`는 건드리지 않는다.
 const visible = (screen: string) => !root.querySelector<HTMLElement>(`[data-screen="${screen}"]`)!.hidden;
-const onStart = () => visible('start') && !visible('settings') && !visible('ranking');
+const onStart = () => visible('start') && !visible('match-nick') && !visible('settings') && !visible('ranking');
 let busy = false;
 const close = () => {
   bar.hidden = true;

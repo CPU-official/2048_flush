@@ -1,6 +1,7 @@
 import { createGame, maxTile, move, type Direction, type GameState, type MoveResult } from '../core/game';
 import type { ClientMessage, GameOverReason, MatchOutcome, ResultReason, ServerMessage } from '../net/messages';
 import { GameSession } from './session';
+import { timeLimit, type TimerSettings } from './timer';
 
 // 1대1 대결의 클라이언트 쪽 흐름 (docs/overview-project.md "대결 화면", docs/networking.md "대결 진행 흐름").
 // 화면, 시계, 네트워크를 모른다: 시계(ms)는 호출하는 쪽이 넘기고, 서버로는 post만 쓴다.
@@ -11,6 +12,12 @@ export interface MatchResult {
   score: number;
   opponentScore: number;
   reason: ResultReason;
+}
+
+// 점수 차이는 앞선 쪽을 가리킨다 (내가 왼쪽, 상대가 오른쪽): "◀ +320" / "+320 ▶"
+export function diffText(me: number, opponent: number): string {
+  if (me === opponent) return '0';
+  return me > opponent ? `◀ +${me - opponent}` : `+${opponent - me} ▶`;
 }
 
 export class Match {
@@ -27,6 +34,8 @@ export class Match {
   // phase나 종료 상태가 바뀔 때 불린다
   onChange = (): void => {};
   private startAt = 0;
+  private timer: TimerSettings | null = null;
+  private opponentMoveAt = 0; // 상대의 마지막 입력을 받은 시각 (상대 시간 바를 짐작하는 데 쓴다)
   private opponentTurns = 0;
 
   constructor(private net: { post(msg: ClientMessage): boolean }) {}
@@ -59,6 +68,14 @@ export class Match {
     return Math.min(this.timeLimit, this.timeLimit - (now - this.startAt) / 1000);
   }
 
+  // 상대의 이번 수 남은 시간 비율 0~1. 상대 화면의 실제 타이머가 아니라, 입력이 도착한 시각으로 짐작한 값이다.
+  opponentTime(now: number): number {
+    if (!this.theirs || !this.timer || this.opponentOver) return this.opponentOver ? 0 : 1;
+    const limit = timeLimit(this.theirs.moves, this.timer);
+    const since = Math.max(0, now - Math.max(this.startAt, this.opponentMoveAt)) / 1000;
+    return Math.min(1, Math.max(0, (limit - since) / limit));
+  }
+
   // 카운트다운 남은 시간(초)
   countdown(now: number): number {
     return Math.max(0, (this.startAt - now) / 1000);
@@ -73,6 +90,7 @@ export class Match {
     } else if (msg.type === 'start') {
       this.startAt = now + msg.startIn;
       this.timeLimit = msg.timeLimit;
+      this.timer = msg.timer;
       this.mine = new GameSession(msg.seed, msg.timer, this.startAt); // 시간 바는 시작 시각부터 줄어든다
       this.theirs = createGame(msg.seed);
       this.phase = 'countdown';
@@ -82,6 +100,7 @@ export class Match {
       if (!this.theirs || msg.turn < this.opponentTurns) return;
       const result = move(this.theirs, msg.dir);
       this.opponentTurns = msg.turn + 1;
+      this.opponentMoveAt = now;
       if (!result.moved) return;
       this.theirs = result.state;
       this.onOpponentMove(result);
@@ -136,6 +155,8 @@ export class Match {
     this.result = null;
     this.timeLimit = 0;
     this.startAt = 0;
+    this.timer = null;
+    this.opponentMoveAt = 0;
     this.opponentTurns = 0;
     this.myEnd = null;
   }

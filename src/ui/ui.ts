@@ -9,7 +9,7 @@ root.innerHTML = `
     <h1 class="logo">2048</h1>
     <nav class="menu">
       <button data-act="play">게임 플레이</button>
-      <button disabled>대결</button>
+      <button data-act="match" disabled>대결</button>
       <button data-act="ranking" class="ghost">랭킹</button>
       <button data-act="settings" class="ghost" ${window.api ? '' : 'disabled'}>설정</button>
     </nav>
@@ -64,7 +64,7 @@ const REASON_TEXT: Record<EndReason, string> = { timeout: '시간 초과', stuck
 const form = el<HTMLFormElement>('account');
 
 // names에 있는 화면만 보이게 한다.
-function show(...names: string[]): void {
+export function show(...names: string[]): void {
   for (const s of root.querySelectorAll<HTMLElement>('[data-screen]')) s.hidden = !names.includes(s.dataset.screen!);
 }
 
@@ -145,6 +145,11 @@ export function showRanking(scope: RankScope, entries: RankEntry[], message: str
   );
   el('rank-message').textContent = message;
   show(inGame ? 'game' : 'start', 'ranking');
+}
+
+// 서버에 연결돼 있을 때만 대결을 시작할 수 있다.
+export function setMatchEnabled(on: boolean): void {
+  root.querySelector<HTMLButtonElement>('[data-act="match"]')!.disabled = !on;
 }
 
 // 화면 구석의 서버 연결 상태. pending: 오프라인 큐에 쌓인 기록 수.

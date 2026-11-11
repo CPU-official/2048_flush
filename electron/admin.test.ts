@@ -182,6 +182,7 @@ describe('admin', () => {
     const status = await admin.run('server.status');
     expect(status.message).toContain('접속자 1명');
     expect(status.message).toContain(`:${port}`);
+    expect(status.message).toContain('대기 중 0명 · 진행 중인 대결 없음');
     client.disconnect();
   });
 

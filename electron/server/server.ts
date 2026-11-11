@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, type WebSocket } from 'ws';
 import { BACKUP_INTERVAL, DEFAULT_TIMER } from '../../src/constants';
 import type { TimerSettings } from '../../src/game/timer';
 import type { ClientMessage, ServerMessage } from '../../src/net/messages';
+import { createMatches } from './match';
 import { listAll, listPlayer, load, save, stamp, submit, toCsv } from './ranking';
 
 export interface RunningServer {
@@ -15,6 +16,7 @@ export interface RunningServer {
   setPassword(nickname: string, password: string): boolean; // 없는 닉네임이면 false
   exportCsv(): string; // 비밀번호 없는 CSV를 dir에 쓰고 파일 경로를 돌려준다
   resetRanking(): string; // 지금 랭킹을 ranking.<시각>.json으로 백업한 뒤 비운다. 백업 경로를 돌려준다
+  matchStatus(): { waiting: number; matches: [string, string][] }; // 대기 중인 사람 수와 진행 중인 대결(닉네임 쌍)
   clients(): number; // 지금 접속 중인 클라이언트 수
   stop(): Promise<void>;
 }
@@ -37,7 +39,28 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
     if (fs.existsSync(rankingFile)) fs.copyFileSync(rankingFile, path.join(dir, 'ranking.backup.json'));
   }, BACKUP_INTERVAL * 1000);
 
+  const sockets = new Map<number, WebSocket>(); // 연결 id → 소켓. 대결 로직은 id로만 사람을 가리킨다
+  let nextId = 0;
+  const matches = createMatches({
+    send: (id, msg) => {
+      const s = sockets.get(id);
+      if (s && s.readyState === s.OPEN) s.send(JSON.stringify(msg));
+    },
+    timer: () => timer,
+    random: Math.random,
+    after: (ms, fn) => {
+      const t = setTimeout(fn, ms);
+      return () => clearTimeout(t);
+    },
+  });
+
   wss.on('connection', (socket) => {
+    const id = ++nextId;
+    sockets.set(id, socket);
+    socket.on('close', () => {
+      sockets.delete(id);
+      matches.disconnect(id);
+    });
     const send = (msg: ServerMessage) => socket.send(JSON.stringify(msg));
     send({ type: 'config', timer });
     socket.on('message', (raw) => {
@@ -51,6 +74,8 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
         } else if (msg.type === 'rank.get') {
           const entries = msg.scope === 'player' ? listPlayer(data, msg.nickname ?? '', msg.top) : listAll(data, msg.top);
           send({ type: 'rank.list', scope: msg.scope, nickname: msg.nickname, entries });
+        } else if (msg.type === 'match.find' || msg.type === 'match.cancel' || msg.type === 'move' || msg.type === 'gameover') {
+          matches.handle(id, msg);
         }
         // 알 수 없는 타입은 무시한다
       } catch (err) {
@@ -68,6 +93,7 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
           return timer;
         },
         clients: () => wss.clients.size,
+        matchStatus: matches.status,
         users: () => Object.keys(data.users).sort(),
         deleteUser: (nickname) => {
           if (!Object.hasOwn(data.users, nickname)) return false;
@@ -106,6 +132,7 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
         },
         stop: () => {
           clearInterval(backup);
+          matches.close();
           for (const client of wss.clients) client.terminate();
           return new Promise((done) => wss.close(() => done()));
         },

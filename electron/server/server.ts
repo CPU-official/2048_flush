@@ -10,6 +10,9 @@ export interface RunningServer {
   port: number;
   timer: TimerSettings;
   setTimer(timer: TimerSettings): void; // 저장하고 접속 중인 클라이언트에 다시 보낸다
+  users(): string[]; // 등록된 닉네임 (비밀번호는 내보내지 않는다)
+  deleteUser(nickname: string): boolean; // 닉네임과 그 기록을 지운다. 없으면 false
+  setPassword(nickname: string, password: string): boolean; // 없는 닉네임이면 false
   exportCsv(): string; // 비밀번호 없는 CSV를 dir에 쓰고 파일 경로를 돌려준다
   resetRanking(): string; // 지금 랭킹을 ranking.<시각>.json으로 백업한 뒤 비운다. 백업 경로를 돌려준다
   stop(): Promise<void>;
@@ -62,6 +65,23 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
         port: (wss.address() as { port: number }).port,
         get timer() {
           return timer;
+        },
+        users: () => Object.keys(data.users).sort(),
+        deleteUser: (nickname) => {
+          if (!Object.hasOwn(data.users, nickname)) return false;
+          const { [nickname]: _gone, ...users } = data.users;
+          const games = data.games.filter((g) => g.nickname !== nickname);
+          save(rankingFile, { users, games }); // 저장이 실패하면 메모리를 바꾸지 않는다
+          data.users = users;
+          data.games = games;
+          return true;
+        },
+        setPassword: (nickname, password) => {
+          if (!Object.hasOwn(data.users, nickname)) return false;
+          const users = { ...data.users, [nickname]: password };
+          save(rankingFile, { users, games: data.games });
+          data.users = users;
+          return true;
         },
         exportCsv: () => {
           const file = path.join(dir, `ranking.${stamp(Date.now())}.csv`);

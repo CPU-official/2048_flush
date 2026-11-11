@@ -135,6 +135,42 @@ describe('admin', () => {
     client.disconnect();
   });
 
+  it('사용자 관리: 목록(비밀번호 없음), 비밀번호 재설정, 삭제', async () => {
+    expect((await admin.run('user.delete', 'kim')).ok).toBe(false); // 서버가 없을 때
+    expect((await admin.run('user.password', 'kim', '1234')).ok).toBe(false);
+    const port = await freePort();
+    expect((await admin.run('server.start', port)).state.users).toEqual([]);
+    const client = new NetClient();
+    client.connect(`localhost:${port}`);
+    await vi.waitFor(() => expect(client.connected).toBe(true));
+    const game = (id: string, nickname: string, password: string, score: number) => ({ id, nickname, password, score, maxTile: 64 });
+    expect(await client.submit(game('a', 'lee', '1111', 10))).toBeNull();
+    expect(await client.submit(game('b', 'kim', '0123', 20))).toBeNull();
+    expect(await client.submit(game('c', 'kim', '0123', 30))).toBeNull();
+
+    const listed = await admin.run('state');
+    expect(listed.state.users).toEqual(['kim', 'lee']);
+    expect(JSON.stringify(listed)).not.toMatch(/0123|1111/); // 비밀번호는 렌더러로 가지 않는다
+
+    for (const bad of ['123', '12345', 'abcd', 1234, null]) expect((await admin.run('user.password', 'kim', bad)).ok).toBe(false);
+    expect((await admin.run('user.password', 'nobody', '1234')).ok).toBe(false);
+    const changed = await admin.run('user.password', 'kim', '9999');
+    expect(changed.ok).toBe(true);
+    expect(JSON.stringify(changed)).not.toContain('9999');
+    expect(await client.submit(game('d', 'kim', '0123', 40))).toBe('password'); // 옛 비밀번호는 거부
+    expect(await client.submit(game('e', 'kim', '9999', 40))).toBeNull();
+
+    expect((await admin.run('user.delete', 'nobody')).ok).toBe(false);
+    expect((await admin.run('user.delete', 'toString')).ok).toBe(false); // 프로토타입 키
+    const deleted = await admin.run('user.delete', 'kim');
+    expect(deleted.state.users).toEqual(['lee']);
+    const file = JSON.parse(fs.readFileSync(path.join(dir, 'ranking.json'), 'utf8'));
+    expect(Object.keys(file.users)).toEqual(['lee']);
+    expect(file.games.map((g: { nickname: string }) => g.nickname)).toEqual(['lee']);
+    expect(await client.submit(game('f', 'kim', '5555', 1))).toBeNull(); // 지운 닉네임은 새로 등록할 수 있다
+    client.disconnect();
+  });
+
   it('서버 시작을 동시에 불러도 하나만 뜬다', async () => {
     const [a, b] = await Promise.all([admin.run('server.start', await freePort()), admin.run('server.start', await freePort())]);
     expect([a.ok, b.ok]).toEqual([true, false]);

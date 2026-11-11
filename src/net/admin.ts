@@ -9,6 +9,7 @@ export interface AppState {
   vfx: boolean;
   running: boolean; // 이 PC에서 서버가 실행 중인가
   lanAddress: string; // 다른 PC가 접속할 이 PC의 "IP:포트"
+  users: string[] | null; // 등록된 닉네임 목록(비밀번호 없음). 서버가 실행 중일 때만 있다
   timer: TimerSettings | null; // 서버가 쓰는 제한 시간 설정. 서버가 실행 중일 때만 있다
   connectTo: string; // 이 PC의 클라이언트가 접속할 주소. 서버 실행 중이면 localhost
 }

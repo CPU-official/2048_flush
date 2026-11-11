@@ -35,6 +35,7 @@ export function createAdmin(dir: string) {
     ...config,
     running: server !== null,
     lanAddress: `${lanIp()}:${server?.port ?? config.port}`,
+    users: server?.users() ?? null,
     timer: server?.timer ?? null,
     connectTo: server ? `localhost:${server.port}` : config.serverAddress,
   });
@@ -90,6 +91,20 @@ export function createAdmin(dir: string) {
     'ranking.reset': async () => {
       if (!server) return done(false, '서버가 실행 중일 때만 초기화할 수 있습니다.');
       return done(true, `랭킹을 초기화했습니다. 백업: ${server.resetRanking()}`);
+    },
+
+    'user.delete': async (nickname) => {
+      if (!server) return done(false, '서버가 실행 중일 때만 지울 수 있습니다.');
+      if (typeof nickname !== 'string' || !server.deleteUser(nickname)) return done(false, `없는 닉네임입니다: ${nickname}`);
+      return done(true, `${nickname}과(와) 그 기록을 지웠습니다.`);
+    },
+
+    // 메시지에 비밀번호를 넣지 않는다 (화면과 로그에 남기지 않는다)
+    'user.password': async (nickname, password) => {
+      if (!server) return done(false, '서버가 실행 중일 때만 바꿀 수 있습니다.');
+      if (typeof password !== 'string' || !/^\d{4}$/.test(password)) return done(false, '비밀번호는 숫자 4자리여야 합니다.');
+      if (typeof nickname !== 'string' || !server.setPassword(nickname, password)) return done(false, `없는 닉네임입니다: ${nickname}`);
+      return done(true, `${nickname}의 비밀번호를 바꿨습니다.`);
     },
 
     connect: async (input) => {

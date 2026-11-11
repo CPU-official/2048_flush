@@ -34,7 +34,7 @@ Windows / macOS 전용 Electron 데스크톱 2D 2048 게임. 화려한 VFX와 �
 - 제한 시간 타이머, 계정 세션, 게임 흐름(종료 팝업, 60초 무입력 처리)은 `game`에 둔다.
 - 이펙트를 아무리 추가해도 로직이 오염되지 않고, `core`는 단위 테스트가 쉽다.
 - **DOM과 Pixi의 역할**: 보드, 타일, 파티클 등 게임 연출은 Pixi 캔버스에, 메뉴/HUD/시간 바/팝업/입력창은 그 위에 겹친 DOM(`src/ui`)에 그린다. 텍스트 입력과 팝업은 DOM이 훨씬 단순하다. 비네팅도 DOM 레이어(`#vignette`)다.
-- `electron/server`는 Electron API를 쓰지 않는 순수 Node 코드다. 데이터 폴더와 포트를 인자로 받으므로 Vitest에서 임시 폴더로 실제 서버를 띄워 클라이언트(`src/net/client.ts`)와 함께 테스트한다.
+- `electron/admin.ts`와 `electron/server`는 Electron API를 쓰지 않는 순수 Node 코드다. 데이터 폴더와 포트를 인자로 받으므로 Vitest에서 임시 폴더로 실제 서버를 띄워 클라이언트(`src/net/client.ts`)와 함께 테스트한다.
 - 화면 전환과 게임 흐름(게임 오버 → 계정 입력 → 제출 → 계속/종료, 60초 무입력)의 연결은 `src/main.ts`에 있다.
 - `game`의 세션은 시계를 직접 읽지 않고 호출하는 쪽이 `now`(ms)를 넘겨준다. 그래서 타이머 규칙을 단위 테스트할 수 있다.
 
@@ -47,13 +47,14 @@ src/
 ├── render/      # PixiJS 씬, 타일 스프라이트, 보드 렌더링
 ├── vfx/         # 파티클, 셰이더, 필터, 화면 흔들림 등 이펙트
 ├── audio/       # Howler 기반 사운드 매니저
-├── net/         # 클라이언트 프로토콜, 접속/재접속, 오프라인 큐, 메시지 타입(서버와 공유)
+├── net/         # 클라이언트 프로토콜, 접속/재접속, 오프라인 큐, 메시지 타입(서버와 공유), 관리 함수 타입(admin.ts)
 ├── constants.ts # 조정 가능한 값(제한 시간 유예, 닉네임 길이, 무입력 시간, 대결 시간 등). 서버/클라이언트 공용
-├── ui/          # 화면 (시작, 랭킹, 게임 HUD, 대결, 설정) + console/ (슬래시 커맨드 입력창)
+├── ui/          # 화면 (ui.ts: 시작, 랭킹, 게임 HUD, 팝업 / settings.ts: 설정) + console/ (슬래시 커맨드 입력창)
 ├── assets/      # demo-log.json (시작 화면 데모용 이동 로그) 등
 └── main.ts
 electron/
-├── main.ts      # 메인 프로세스 (창 생성, 네이티브 기능, 서버 시작/중지)
+├── main.ts      # 메인 프로세스 (창 생성, 관리 함수 IPC 연결)
+├── admin.ts     # 관리 함수 모음 (이 PC 설정, 서버 시작/중지 등). 설정 화면과 슬래시 커맨드가 함께 쓴다
 ├── preload.ts   # 렌더러에 노출할 최소 API (`window.api`, 타입은 src/env.d.ts)
 └── server/      # ws 서버(server.ts), 랭킹 저장소(ranking.ts: load/save/제출/조회), 대결 매칭/중계, 서버 설정
 ```

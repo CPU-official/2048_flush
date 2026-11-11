@@ -3,11 +3,13 @@ import { IDLE_LOGOUT, NICKNAME_MAX, RANK_TOP } from './constants';
 import { maxTile, type Direction } from './core/game';
 import { validAccount, type Account } from './game/account';
 import { GameSession } from './game/session';
-import { NetClient } from './net/client';
+import type { AppState } from './net/admin';
+import { NetClient, testConnection } from './net/client';
 import type { RankScope } from './net/messages';
 import { BOARD_PX, BoardView, cellCenter, tileColor } from './render/board';
 import './ui/style.css';
 import * as ui from './ui/ui';
+import { initSettings, openSettings, setConnected } from './ui/settings';
 import { bump } from './vfx/bump';
 import { Particles } from './vfx/particles';
 
@@ -30,11 +32,30 @@ world.addChild(board, particles);
 app.stage.addChild(world);
 
 const net = new NetClient();
-net.onChange = () => ui.setStatus(net.connected, net.queue.length);
+net.onChange = () => {
+  ui.setStatus(net.connected, net.queue.length);
+  setConnected(net.connected);
+};
 net.onChange();
-window.api?.serverAddress().then((address) => {
-  if (address) net.connect(address);
-});
+
+let vfx = true; // 이 PC 설정. 끄면 파티클과 보드 튕김을 생략한다
+let connectTo = '';
+// 관리 함수가 돌려준 상태에 이 PC의 클라이언트를 맞춘다.
+function applyState(state: AppState): void {
+  vfx = state.vfx;
+  if (state.connectTo === connectTo) return;
+  connectTo = state.connectTo;
+  if (connectTo) net.connect(connectTo);
+  else net.disconnect();
+}
+if (window.api) {
+  initSettings(async (name, ...args) => {
+    const result = await window.api!.admin(name, ...args);
+    applyState(result.state);
+    return result;
+  }, testConnection);
+  window.api.admin('state').then((result) => applyState(result.state));
+}
 
 let session: GameSession | null = null;
 let account: Account | null = null; // 메모리에만 둔다. 종료/무입력 시 비운다
@@ -111,9 +132,9 @@ window.addEventListener('keydown', (e) => {
   const result = session.input(dir, performance.now());
   if (result) {
     board.apply(result.events);
-    bump(board, dir);
+    if (vfx) bump(board, dir);
     for (const ev of result.events) {
-      if (ev.type !== 'merge') continue;
+      if (ev.type !== 'merge' || !vfx) continue;
       const { x, y } = cellCenter(ev.at);
       particles.burst(x, y, tileColor(ev.value), BURST_BASE + Math.log2(ev.value));
     }
@@ -127,7 +148,8 @@ window.addEventListener('pointermove', () => {
 
 ui.onAction((act) => {
   if (act === 'play' || act === 'again') startGame();
-  if (act === 'quit') quit();
+  if (act === 'quit' || act === 'close-settings') quit();
+  if (act === 'settings') openSettings().then(ui.showSettings);
   if (act === 'close-ranking') {
     rankingView++;
     if (session) ui.backToOver();

@@ -1,17 +1,19 @@
+import { NICKNAME_MAX } from '../constants';
 import type { EndReason } from '../game/session';
+import type { RankEntry, RankScope } from '../net/messages';
 
 const root = document.getElementById('ui')!;
 root.innerHTML = `
-  <section class="start">
+  <section data-screen="start" class="start">
     <h1 class="logo">2048</h1>
     <nav class="menu">
       <button data-act="play">게임 플레이</button>
       <button disabled>대결</button>
-      <button disabled>랭킹</button>
+      <button data-act="ranking" class="ghost">랭킹</button>
       <button disabled>설정</button>
     </nav>
   </section>
-  <section class="game" hidden>
+  <section data-screen="game" hidden>
     <header class="hud">
       <div><span>최고 점수</span><b data-id="best">--</b></div>
       <div><span>닉네임</span><b data-id="nickname">--</b></div>
@@ -19,19 +21,47 @@ root.innerHTML = `
     </header>
     <div class="timebar"><i data-id="time"></i></div>
   </section>
-  <section class="popup" hidden>
+  <section data-screen="account" class="popup" hidden>
+    <form class="panel" data-id="account">
+      <h2>기록 남기기</h2>
+      <p data-id="account-score" class="score"></p>
+      <input name="nickname" maxlength="${NICKNAME_MAX}" placeholder="닉네임 (${NICKNAME_MAX}자 이내)" autocomplete="off" />
+      <input name="password" type="password" inputmode="numeric" maxlength="4" placeholder="비밀번호 (숫자 4자리)" autocomplete="off" />
+      <p data-id="account-error" class="error"></p>
+      <button>기록하기</button>
+      <button type="button" data-act="quit" class="ghost">기록 안 하고 종료</button>
+    </form>
+  </section>
+  <section data-screen="over" class="popup" hidden>
     <div class="panel">
       <h2 data-id="reason"></h2>
       <p data-id="final" class="score"></p>
+      <p data-id="note" class="note"></p>
       <button data-act="again">계속 플레이</button>
       <button data-act="quit" class="ghost">종료</button>
     </div>
+  </section>
+  <section data-screen="ranking" class="popup" hidden>
+    <div class="panel wide">
+      <nav class="tabs">
+        <button data-act="tab-all" class="ghost">전체 순위</button>
+        <button data-act="tab-player" class="ghost">개인 기록</button>
+      </nav>
+      <ol data-id="rank-list" class="rank"></ol>
+      <p data-id="rank-message" class="note"></p>
+      <button data-act="close-ranking" class="ghost">닫기</button>
+    </div>
   </section>`;
 
-const el = (id: string) => root.querySelector<HTMLElement>(`[data-id="${id}"]`)!;
-const section = (name: string) => root.querySelector<HTMLElement>(`.${name}`)!;
+const el = <T extends HTMLElement = HTMLElement>(id: string) => root.querySelector<T>(`[data-id="${id}"]`)!;
 const vignette = document.getElementById('vignette')!;
 const REASON_TEXT: Record<EndReason, string> = { timeout: '시간 초과', stuck: '더 움직일 수 없음' };
+const form = el<HTMLFormElement>('account');
+
+// names에 있는 화면만 보이게 한다.
+function show(...names: string[]): void {
+  for (const s of root.querySelectorAll<HTMLElement>('[data-screen]')) s.hidden = !names.includes(s.dataset.screen!);
+}
 
 export function onAction(handler: (act: string) => void): void {
   root.addEventListener('click', (e) => {
@@ -40,25 +70,66 @@ export function onAction(handler: (act: string) => void): void {
   });
 }
 
+export function onAccountSubmit(handler: (nickname: string, password: string) => void): void {
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    handler(form.nickname.value.trim(), form.password.value);
+  });
+}
+
 export function showStart(): void {
-  section('start').hidden = false;
-  section('game').hidden = true;
-  section('popup').hidden = true;
+  show('start');
   setTime(1);
 }
 
-export function showGame(): void {
-  section('start').hidden = true;
-  section('game').hidden = false;
-  section('popup').hidden = true;
+export function showGame(nickname: string | null): void {
+  show('game');
+  el('nickname').textContent = nickname ?? '--';
+  el('best').textContent = '--';
   setScore(0, 0);
   setTime(1);
 }
 
-export function showPopup(reason: EndReason, score: number): void {
+export function setBest(score: number): void {
+  el('best').textContent = String(score);
+}
+
+// error가 있으면 서버가 거부해 돌아온 것이라 닉네임은 남기고 비밀번호만 비운다.
+export function showAccount(score: number, error = ''): void {
+  if (error) form.password.value = '';
+  else form.reset();
+  el('account-score').textContent = String(score);
+  setAccountError(error);
+  show('game', 'account');
+  (error ? form.password : form.nickname).focus();
+}
+
+export function setAccountError(text: string): void {
+  el('account-error').textContent = text;
+}
+
+export function showOver(reason: EndReason, score: number, note: string): void {
   el('reason').textContent = REASON_TEXT[reason];
   el('final').textContent = String(score);
-  section('popup').hidden = false;
+  el('note').textContent = note;
+  show('game', 'over');
+}
+
+// entries가 없으면 message만 보여 준다.
+export function showRanking(scope: RankScope, entries: RankEntry[], message: string): void {
+  for (const tab of ['all', 'player']) {
+    root.querySelector(`[data-act="tab-${tab}"]`)!.classList.toggle('on', tab === scope);
+  }
+  el('rank-list').replaceChildren(
+    ...entries.map((e, i) => {
+      const li = document.createElement('li');
+      // 닉네임은 사용자가 입력한 문자열이라 textContent로만 넣는다
+      for (const text of [String(i + 1), e.nickname, String(e.score)]) li.appendChild(document.createElement('span')).textContent = text;
+      return li;
+    }),
+  );
+  el('rank-message').textContent = message;
+  show('start', 'ranking');
 }
 
 export function setScore(score: number, gained: number): void {

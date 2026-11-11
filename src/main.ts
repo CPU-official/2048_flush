@@ -1,7 +1,10 @@
 import { Application, Container } from 'pixi.js';
-import { DEFAULT_TIMER, IDLE_LOGOUT } from './constants';
-import type { Direction } from './core/game';
+import { IDLE_LOGOUT, NICKNAME_MAX, RANK_TOP } from './constants';
+import { maxTile, type Direction } from './core/game';
+import { validAccount, type Account } from './game/account';
 import { GameSession } from './game/session';
+import { NetClient } from './net/client';
+import type { RankScope } from './net/messages';
 import { BOARD_PX, BoardView, cellCenter, tileColor } from './render/board';
 import './ui/style.css';
 import * as ui from './ui/ui';
@@ -26,20 +29,38 @@ const particles = new Particles();
 world.addChild(board, particles);
 app.stage.addChild(world);
 
+const net = new NetClient();
+window.api?.serverAddress().then((address) => {
+  if (address) net.connect(address);
+});
+
 let session: GameSession | null = null;
+let account: Account | null = null; // 메모리에만 둔다. 종료/무입력 시 비운다
+let rankingView = 0; // 랭킹 팝업을 열거나 닫을 때마다 올린다
+let gameId = ''; // 게임마다 새로 만든다. 서버가 중복 제출을 걸러내는 키
 let idleTimer: ReturnType<typeof setTimeout> | undefined;
 
 function startGame(): void {
   clearTimeout(idleTimer);
-  session = new GameSession((Math.random() * 2 ** 32) | 0, DEFAULT_TIMER, performance.now());
+  session = new GameSession((Math.random() * 2 ** 32) | 0, net.timer, performance.now());
+  gameId = crypto.randomUUID();
   board.reset(session.state.board);
   world.visible = true;
-  ui.showGame();
+  ui.showGame(account?.nickname ?? null);
+  if (account) {
+    const id = gameId;
+    net.ranking('player', account.nickname, 1).then((entries) => {
+      if (id === gameId && entries?.[0]) ui.setBest(entries[0].score);
+    });
+  }
 }
 
 function quit(): void {
   clearTimeout(idleTimer);
   session = null;
+  account = null;
+  gameId = '';
+  rankingView++;
   world.visible = false;
   ui.showStart();
 }
@@ -51,8 +72,33 @@ function armIdle(): void {
 }
 
 function gameOver(): void {
-  ui.showPopup(session!.ended!, session!.state.score);
   armIdle();
+  if (account) submitRecord(account);
+  else ui.showAccount(session!.state.score);
+}
+
+// 기록을 제출하고 결과에 따라 입력창 또는 계속/종료 팝업을 띄운다.
+async function submitRecord(who: Account): Promise<void> {
+  const id = gameId;
+  const { score, board: cells } = session!.state;
+  const error = await net.submit({ id, ...who, score, maxTile: maxTile(cells) });
+  if (id !== gameId) return; // 응답을 기다리는 사이 종료했거나 무입력으로 나갔다
+  if (error === 'password' || error === 'invalid') {
+    account = null;
+    ui.showAccount(score, error === 'password' ? '이미 있는 닉네임이에요. 비밀번호가 달라요.' : '닉네임 또는 비밀번호 형식이 맞지 않아요.');
+    return;
+  }
+  account = who;
+  // shortcut: 오프라인이면 기록을 버린다, 오프라인 큐(구현 순서 4번)에서 저장으로 바꾼다
+  ui.showOver(session!.ended!, score, error === 'offline' ? '서버에 연결되지 않아 기록하지 못했어요.' : '');
+}
+
+async function openRanking(scope: RankScope): Promise<void> {
+  const view = ++rankingView;
+  if (scope === 'player' && !account) return ui.showRanking(scope, [], '기록 후 확인할 수 있어요');
+  const entries = await net.ranking(scope, scope === 'player' ? account!.nickname : undefined, RANK_TOP);
+  if (view !== rankingView) return; // 응답을 기다리는 사이 닫았거나 다른 탭을 눌렀다
+  ui.showRanking(scope, entries ?? [], entries ? (entries.length ? '' : '아직 기록이 없어요') : '서버 연결 안 됨');
 }
 
 window.addEventListener('keydown', (e) => {
@@ -79,7 +125,15 @@ window.addEventListener('pointermove', () => {
 
 ui.onAction((act) => {
   if (act === 'play' || act === 'again') startGame();
-  if (act === 'quit') quit();
+  if (act === 'quit' || act === 'close-ranking') quit();
+  if (act === 'ranking' || act === 'tab-all') openRanking('all');
+  if (act === 'tab-player') openRanking('player');
+});
+
+ui.onAccountSubmit((nickname, password) => {
+  armIdle();
+  if (!validAccount(nickname, password)) return ui.setAccountError(`닉네임은 1~${NICKNAME_MAX}자, 비밀번호는 숫자 4자리예요.`);
+  submitRecord({ nickname, password });
 });
 
 app.ticker.add(() => {

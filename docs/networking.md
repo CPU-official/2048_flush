@@ -70,6 +70,20 @@
 { "timer": { "start": 3.0, "maxReduction": 2.0, "midMove": 40, "steepness": 0.1 } }
 ```
 
+- 두 파일 모두 없으면 기본값으로 동작한다. 일부 값만 적혀 있으면 나머지는 기본값을 쓴다.
+- `mode`가 `"server"`이면 앱을 켤 때 `port`로 서버를 띄우고, 이 PC의 클라이언트는 `localhost:포트`로 접속한다. 포트 충돌이나 깨진 데이터 파일(`ranking.json`, `server-settings.json`) 때문에 서버가 뜨지 못해도 창은 열리고 싱글 플레이는 된다. 깨진 `ranking.json`은 덮어쓰지 않고 그대로 둔다.
+- `config.json`이 깨져 있으면 기본값(클라이언트 모드)으로 켜진다.
+- 서버는 처리하다 오류가 난 메시지를 버리고 계속 동작한다 (메시지 하나 때문에 행사 중 서버가 죽지 않게).
+- `mode`가 `"client"`이면 `serverAddress`로 접속한다. 비어 있으면 접속하지 않는다.
+- **현재 상태**: 설정 화면과 슬래시 커맨드(구현 순서 5번)가 생기기 전까지는 `config.json`을 직접 고쳐서 모드를 바꾼다.
+
+### 클라이언트 접속
+
+- 접속이 끊기면 `RECONNECT_INTERVAL`(3초)마다 다시 접속을 시도한다.
+- 요청(`rank.submit`, `rank.get`)의 응답이 `REQUEST_TIMEOUT`(5초) 안에 오지 않거나 그 사이 끊기면 "서버에 닿지 못함"으로 처리한다.
+- 서버가 내려준 마지막 제한 시간 설정은 렌더러의 `localStorage`(`timer` 키)에 보관해, 서버 없이 켰을 때도 그 값을 쓴다.
+- 렌더러는 preload의 `window.api.serverAddress()`로 접속할 주소를 받는다.
+
 ## 서버 책임
 
 1. **랭킹**: 닉네임별 기록 저장, 순위 조회 (닉네임 + 비밀번호로 본인 구분)
@@ -122,7 +136,11 @@
 - **계정**: 처음 보는 닉네임이면 `users`에 등록한다. 이미 있는 닉네임인데 비밀번호가 다르면 `password` 오류로 거부한다. 닉네임과 비밀번호 형식은 서버에서도 검사한다 ([overview-project.md](overview-project.md)의 계정 규칙).
 - **중복 방지**: `게임 id`는 클라이언트가 게임마다 만든 랜덤 값이다. 서버는 이미 처리한 id가 다시 오면 저장하지 않고 성공 응답만 돌려준다.
 - **저장은 원자적으로**: `ranking.json.tmp`에 쓴 뒤 `ranking.json` 위로 rename한다. 쓰는 도중 종료돼도 파일이 깨지지 않는다.
-- **백업**: 주기적으로 백업 파일을 만들고, `/ranking reset confirm` 직전에도 반드시 `ranking.<시각>.json`으로 복사한다.
+- **백업**: 서버가 떠 있는 동안 `BACKUP_INTERVAL`(5분)마다 `ranking.json`을 `ranking.backup.json`으로 복사한다 (한 벌만 두고 덮어쓴다). `/ranking reset confirm` 직전에도 반드시 `ranking.<시각>.json`으로 복사한다.
+- **기록 시각**: `games[].at`은 서버가 기록을 받은 시각(서버 시계, ms)이다.
+- **정렬**: 점수가 높은 순, 같으면 먼저 기록한 쪽이 위다. 전체 순위와 개인 기록 모두 같다.
+- **형식 오류**: 닉네임/비밀번호 형식이 틀렸거나 점수가 숫자가 아니면 `invalid` 오류로 거부하고 아무것도 저장하지 않는다.
+- **응답에 넣는 값**: 랭킹 목록의 한 줄은 `{ nickname, score, maxTile, at }`뿐이다. 비밀번호와 게임 id는 넣지 않는다.
 - 사용자 삭제는 `users`와 그 닉네임의 `games`를 함께 지운다.
 
 ### 오프라인 큐
@@ -132,13 +150,14 @@
 - 서버에 보낼 수 없으면 결과를 **로컬 큐에 저장**하고, 재접속 시 자동 전송한다. 재전송해도 `게임 id` 덕분에 중복 저장되지 않는다.
 - 재접속 후 서버가 `password` 오류로 거부한 항목(오프라인 중 다른 PC에서 같은 닉네임이 먼저 등록된 경우)은 큐에서 제거하고 로컬 로그에 남긴다.
 - 서버가 없을 때도 싱글 플레이는 로컬에서 동작한다.
+- **현재 상태**: 오프라인 큐는 아직 없다(구현 순서 4번). 지금은 서버에 닿지 못한 채 게임이 끝나면 "서버에 연결되지 않아 기록하지 못했어요"를 띄우고 그 기록은 버린다. 계정(닉네임/비밀번호)은 확인 없이 메모리에 유지한다.
 - 화면에 연결 상태(연결됨/끊김/대기 중 N건)를 표시한다.
 
 ## 메시지 프로토콜 (초안)
 
 | 방향 | 타입 | 내용 |
 |---|---|---|
-| S→C | `config` | 제한 시간 설정(`start`, `maxReduction`, `midMove`, `steepness`). 접속 직후 전송 |
+| S→C | `config` | `timer`: 제한 시간 설정(`start`, `maxReduction`, `midMove`, `steepness`). 접속 직후 전송 |
 | C→S | `match.find` | 닉네임 (대기열에 들어감) |
 | C→S | `match.cancel` | (대기 취소) |
 | S→C | `match.found` | 대결 id, 상대 닉네임 |
@@ -152,11 +171,12 @@
 | C→S | `match.resume` | 대결 id (재접속 시) |
 | S→C | `result` | 승패(`win`/`lose`/`draw`), 양쪽 점수, 사유(`normal`/`timeLimit`/`forfeit`) |
 | C→S | `rank.submit` | 게임 id, 닉네임, 비밀번호, 점수, 최대 타일 (싱글 전용) |
-| S→C | `rank.ack` | 게임 id, 성공 / 오류(`password`) |
-| C→S | `rank.get` | `scope`(`all` 또는 `player`), 닉네임(`player`일 때), 상위 N |
-| S→C | `rank.list` | 랭킹 목록 (비밀번호 제외) |
+| S→C | `rank.ack` | 게임 `id`, `ok`(성공 여부), 실패 시 `error`(`password` 또는 `invalid`) |
+| C→S | `rank.get` | `scope`(`all` 또는 `player`), `nickname`(`player`일 때), `top`(상위 N) |
+| S→C | `rank.list` | 요청의 `scope`와 `nickname`을 그대로 돌려주고, `entries`에 랭킹 목록 (비밀번호 제외) |
 
-- 메시지는 JSON, 모든 메시지에 `type`을 둔다. 알 수 없는 타입은 무시한다.
+- 메시지는 JSON, 모든 메시지에 `type`을 둔다. 알 수 없는 타입은 무시한다. 타입 정의는 `src/net/messages.ts`가 기준이다.
+- **구현 현황**: `config`, `rank.*`만 구현돼 있다. 대결 관련 메시지는 구현 순서 7번에서 추가한다.
 - **시작 시각은 절대 시각이 아니라 "남은 ms"로 보낸다.** PC마다 시계가 달라도 각 클라이언트가 `start`를 받은 시점부터 센다.
 - 멀티에서 시간 초과로 끝난 것은 입력이 아니라서 이동 로그에 남지 않는다. 그래서 `gameover`의 `reason: timeout`을 서버가 기록하고, 재접속 시 입력 로그와 함께 "종료됨" 상태를 내려준다.
 

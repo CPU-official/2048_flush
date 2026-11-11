@@ -57,3 +57,18 @@ export function listAll(data: RankingData, top: number): RankEntry[] {
 export function listPlayer(data: RankingData, nickname: string, top: number): RankEntry[] {
   return data.games.filter((g) => g.nickname === nickname).sort(byScore).slice(0, top).map(strip);
 }
+
+const csvCell = (text: string) => (/[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text);
+
+// 관리용 CSV: 게임 한 줄씩, 점수 높은 순. 비밀번호와 게임 id는 넣지 않는다. BOM은 엑셀에서 한글이 깨지지 않게 붙인다.
+export function toCsv(data: RankingData): string {
+  const rows = [...data.games].sort(byScore).map((g) => [csvCell(g.nickname), g.score, g.maxTile, new Date(g.at).toISOString()].join(','));
+  return `\ufeff${['닉네임,점수,최대 타일,기록 시각', ...rows].join('\n')}\n`;
+}
+
+// 파일 이름에 넣는 로컬 시각 "YYYYMMDD-HHmmss"
+export function stamp(now: number): string {
+  const d = new Date(now);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}

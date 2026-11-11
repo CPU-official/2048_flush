@@ -27,6 +27,7 @@ const input = (name: string) => panel.querySelector<HTMLInputElement>(`input[nam
 const say = (text: string) => (panel.querySelector('[data-id="settings-message"]')!.textContent = text);
 
 function render({ state, message }: AdminResult): void {
+  confirmReset = false;
   panel.innerHTML = `
     <h2>설정</h2>
     <div class="row"><span>VFX (이 PC)</span><button data-set="vfx" class="ghost">${state.vfx ? '켜짐' : '꺼짐'}</button></div>
@@ -60,7 +61,9 @@ const serverMode = (state: AppState) => `
     <button data-set="stop" class="ghost">서버 중지</button>
     <p class="label">수당 제한 시간 (다음 게임부터 적용)</p>
     ${TIMER_FIELDS.map(([name, label]) => `<div class="row"><span>${label}</span><input name="${name}" inputmode="decimal" autocomplete="off" /></div>`).join('')}
-    <button data-set="timer" class="ghost">저장</button>`;
+    <button data-set="timer" class="ghost">저장</button>
+    <p class="label">랭킹 관리</p>
+    <div class="row"><button data-set="export" class="ghost">CSV 내보내기</button><button data-set="reset" class="ghost">랭킹 초기화</button></div>`;
 
 const clientMode = () => `
     <p class="label">서버 주소 (IP:포트)</p>
@@ -69,12 +72,29 @@ const clientMode = () => `
     <p class="label">이 PC를 서버로 쓰기 (포트)</p>
     <div class="row"><input name="port" inputmode="numeric" autocomplete="off" /><button data-set="start" class="ghost">서버 시작</button></div>`;
 
+let confirmReset = false; // 초기화는 두 번 눌러야 실행된다
+function resetButton(confirming: boolean): void {
+  confirmReset = confirming;
+  const button = panel.querySelector('[data-set="reset"]');
+  if (button) button.textContent = confirming ? '정말 초기화' : '랭킹 초기화';
+}
+
 async function act(action: string, state: AppState): Promise<void> {
+  if (action !== 'reset') resetButton(false); // 다른 버튼을 누르면 초기화 확인이 풀린다
   if (action === 'vfx') return render(await run('vfx', !state.vfx));
   if (action === 'timer') {
     // 빈 칸은 Number('')=0이 되므로 NaN으로 바꿔 서버 검증에서 걸리게 한다
     const num = (name: string) => (input(name).value.trim() === '' ? NaN : Number(input(name).value));
     return void say((await run('timer.set', Object.fromEntries(TIMER_FIELDS.map(([name]) => [name, num(name)])))).message);
+  }
+  if (action === 'export') return void say((await run('ranking.export')).message);
+  if (action === 'reset') {
+    if (!confirmReset) {
+      resetButton(true);
+      return void say('모든 기록과 닉네임이 지워집니다 (자동 백업됩니다). 계속하려면 한 번 더 누르세요.');
+    }
+    resetButton(false); // 실행이 끝나기 전의 연타가 두 번 실행되지 않게 바로 푼다
+    return render(await run('ranking.reset'));
   }
   if (action === 'stop') return render(await run('server.stop'));
   if (action === 'start') return render(await run('server.start', Number(input('port').value)));

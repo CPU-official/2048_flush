@@ -101,6 +101,40 @@ describe('admin', () => {
     expect((await admin.run('server.start', port)).state.timer).toEqual(timer);
   });
 
+  it('랭킹 CSV는 비밀번호 없이 내보내고, 초기화는 백업 후 비운다', async () => {
+    expect((await admin.run('ranking.export')).ok).toBe(false); // 서버가 없을 때
+    expect((await admin.run('ranking.reset')).ok).toBe(false);
+    const port = await freePort();
+    await admin.run('server.start', port);
+    const client = new NetClient();
+    client.connect(`localhost:${port}`);
+    await vi.waitFor(() => expect(client.connected).toBe(true));
+    const nick = 'kim,"x"';
+    expect(await client.submit({ id: 'a', nickname: nick, password: '0123', score: 100, maxTile: 64 })).toBeNull();
+    expect(await client.submit({ id: 'b', nickname: 'lee', password: '4567', score: 300, maxTile: 128 })).toBeNull();
+
+    const exported = await admin.run('ranking.export');
+    const csv = fs.readFileSync(exported.message.split(': ')[1], 'utf8');
+    const lines = csv.trim().split('\n');
+    expect(csv.charCodeAt(0)).toBe(0xfeff); // 엑셀에서 한글이 깨지지 않게 붙이는 BOM
+    expect(lines[0]).toBe('닉네임,점수,최대 타일,기록 시각'); // trim()이 BOM을 지운다
+    expect(lines[1]).toMatch(/^lee,300,128,\d{4}-/);
+    expect(lines[2]).toMatch(/^"kim,""x""",100,64,/);
+    expect(csv).not.toMatch(/0123|4567/);
+
+    const reset = await admin.run('ranking.reset');
+    expect(reset.ok).toBe(true);
+    const backup = JSON.parse(fs.readFileSync(reset.message.split('백업: ')[1], 'utf8'));
+    expect(backup.games).toHaveLength(2);
+    expect(Object.keys(backup.users)).toHaveLength(2);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'ranking.json'), 'utf8'))).toEqual({ users: {}, games: [] });
+    const again = await admin.run('ranking.reset'); // 같은 초에 한 번 더: 앞선 백업이 빈 데이터로 덮이지 않아야 한다
+    expect(again.message).not.toBe(reset.message);
+    expect(JSON.parse(fs.readFileSync(reset.message.split('백업: ')[1], 'utf8')).games).toHaveLength(2);
+    expect(await client.submit({ id: 'c', nickname: nick, password: '9999', score: 5, maxTile: 2 })).toBeNull(); // 닉네임도 비워졌다
+    client.disconnect();
+  });
+
   it('서버 시작을 동시에 불러도 하나만 뜬다', async () => {
     const [a, b] = await Promise.all([admin.run('server.start', await freePort()), admin.run('server.start', await freePort())]);
     expect([a.ok, b.ok]).toEqual([true, false]);

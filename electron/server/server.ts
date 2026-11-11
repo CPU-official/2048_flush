@@ -4,12 +4,14 @@ import { WebSocketServer } from 'ws';
 import { BACKUP_INTERVAL, DEFAULT_TIMER } from '../../src/constants';
 import type { TimerSettings } from '../../src/game/timer';
 import type { ClientMessage, ServerMessage } from '../../src/net/messages';
-import { listAll, listPlayer, load, save, submit } from './ranking';
+import { listAll, listPlayer, load, save, stamp, submit, toCsv } from './ranking';
 
 export interface RunningServer {
   port: number;
   timer: TimerSettings;
   setTimer(timer: TimerSettings): void; // 저장하고 접속 중인 클라이언트에 다시 보낸다
+  exportCsv(): string; // 비밀번호 없는 CSV를 dir에 쓰고 파일 경로를 돌려준다
+  resetRanking(): string; // 지금 랭킹을 ranking.<시각>.json으로 백업한 뒤 비운다. 백업 경로를 돌려준다
   stop(): Promise<void>;
 }
 
@@ -60,6 +62,20 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
         port: (wss.address() as { port: number }).port,
         get timer() {
           return timer;
+        },
+        exportCsv: () => {
+          const file = path.join(dir, `ranking.${stamp(Date.now())}.csv`);
+          fs.writeFileSync(file, toCsv(data));
+          return file;
+        },
+        resetRanking: () => {
+          let backup = path.join(dir, `ranking.${stamp(Date.now())}.json`);
+          for (let n = 1; fs.existsSync(backup); n++) backup = path.join(dir, `ranking.${stamp(Date.now())}-${n}.json`); // 같은 초에 두 번 불러도 앞선 백업을 덮지 않는다
+          save(backup, data); // 메모리 기준으로 백업해야 파일과 어긋나지 않는다
+          save(rankingFile, { users: {}, games: [] }); // 파일 저장이 실패하면 메모리를 비우지 않는다
+          data.users = {};
+          data.games = [];
+          return backup;
         },
         setTimer: (next) => {
           fs.writeFileSync(settingsFile, JSON.stringify({ timer: next }, null, 2));

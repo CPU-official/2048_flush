@@ -81,6 +81,17 @@ export function createAdmin(dir: string) {
       return done(true, '제한 시간을 저장했습니다. 다음 게임부터 적용됩니다.');
     },
 
+    'ranking.export': async () => {
+      if (!server) return done(false, '서버가 실행 중일 때만 내보낼 수 있습니다.');
+      return done(true, `CSV를 저장했습니다: ${server.exportCsv()}`);
+    },
+
+    // 확인 절차는 호출하는 쪽(설정 화면, 슬래시 커맨드)이 맡는다. 여기서는 항상 백업 후 실행한다.
+    'ranking.reset': async () => {
+      if (!server) return done(false, '서버가 실행 중일 때만 초기화할 수 있습니다.');
+      return done(true, `랭킹을 초기화했습니다. 백업: ${server.resetRanking()}`);
+    },
+
     connect: async (input) => {
       const address = normalizeAddress(input);
       if (!address) return done(false, '서버 주소는 IP 또는 IP:포트 형식이어야 합니다.');

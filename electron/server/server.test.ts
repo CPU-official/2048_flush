@@ -9,7 +9,7 @@ import { startServer, type RunningServer } from './server';
 
 const game = (id: string, nickname: string, password: string, score: number) => ({ id, nickname, password, score, maxTile: 64 });
 const until = async (cond: () => boolean) => {
-  for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 600 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
   expect(cond()).toBe(true);
 };
 
@@ -145,5 +145,80 @@ describe('서버 + 클라이언트', () => {
     client.disconnect();
     expect(await client.submit(game('a', 'kim', '0123', 100))).toBe('offline');
     expect(await client.ranking('all', undefined, 10)).toBeNull();
+  });
+
+  describe('오프라인 큐', () => {
+    const fakeStorage = () => {
+      const map = new Map<string, string>();
+      return { getItem: (k: string) => map.get(k) ?? null, setItem: (k: string, v: string) => void map.set(k, v) };
+    };
+    const games = () => load(path.join(dir, 'ranking.json')).games.map((g) => [g.id, g.nickname, g.score]);
+
+    it('오프라인 기록은 큐에 쌓이고, 앱을 다시 켠 뒤 접속하면 자동 전송된다', async () => {
+      const storage = fakeStorage();
+      const offline = new NetClient(storage);
+      const changes: [boolean, number][] = [];
+      offline.onChange = () => changes.push([offline.connected, offline.queue.length]);
+      expect(await offline.submit(game('a', 'kim', '0123', 100))).toBe('offline');
+      expect(await offline.submit(game('a', 'kim', '0123', 100))).toBe('offline');
+      expect(await offline.submit(game('b', 'kim', '0123', 200))).toBe('offline');
+      expect(offline.queue.map((g) => g.id)).toEqual(['a', 'b']);
+      expect(changes).toEqual([[false, 1], [false, 2]]);
+
+      server = await startServer(0, dir);
+      client = new NetClient(storage); // 앱 재시작: 같은 저장소에서 큐를 읽는다
+      expect(client.queue).toHaveLength(2);
+      expect(client.queue[0].password).toBe('0123');
+      client.connect(`localhost:${server.port}`);
+      await until(() => client.queue.length === 0);
+      expect(games()).toEqual([['a', 'kim', 100], ['b', 'kim', 200]]);
+      expect(new NetClient(storage).queue).toEqual([]);
+    });
+
+    it('저장된 큐나 설정이 깨져 있어도 클라이언트가 만들어진다', () => {
+      for (const bad of ['{bad', 'null', '{}', '5']) {
+        const storage = fakeStorage();
+        storage.setItem('queue', bad);
+        storage.setItem('timer', bad);
+        const c = new NetClient(storage);
+        expect(c.queue).toEqual([]);
+        expect(c.timer).toEqual(DEFAULT_TIMER);
+      }
+    });
+
+    it('이미 저장된 기록을 다시 보내도 중복 저장되지 않는다', async () => {
+      await boot();
+      await client.submit(game('a', 'kim', '0123', 100));
+      const storage = fakeStorage();
+      storage.setItem('queue', JSON.stringify([game('a', 'kim', '0123', 100)]));
+      const again = new NetClient(storage);
+      again.connect(`localhost:${server.port}`);
+      await until(() => again.queue.length === 0);
+      again.disconnect();
+      expect(games()).toEqual([['a', 'kim', 100]]);
+    });
+
+    it('서버가 거부한 항목은 버리고 다음 항목을 계속 보낸다', async () => {
+      await boot();
+      await client.submit(game('a', 'kim', '0123', 100));
+      const storage = fakeStorage();
+      storage.setItem('queue', JSON.stringify([game('b', 'kim', '9999', 999), game('c', 'lee', '0000', 50)]));
+      const late = new NetClient(storage);
+      late.connect(`localhost:${server.port}`);
+      await until(() => late.queue.length === 0);
+      late.disconnect();
+      expect(games()).toEqual([['a', 'kim', 100], ['c', 'lee', 50]]);
+    });
+
+    it('접속 중에 끊겼다가 서버가 돌아오면 자동으로 다시 접속해 보낸다', async () => {
+      await boot();
+      const port = server.port;
+      await server.stop();
+      await until(() => !client.connected);
+      expect(await client.submit(game('a', 'kim', '0123', 100))).toBe('offline');
+      server = await startServer(port, dir);
+      await until(() => client.queue.length === 0);
+      expect(games()).toEqual([['a', 'kim', 100]]);
+    }, 10000);
   });
 });

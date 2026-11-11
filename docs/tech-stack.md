@@ -10,7 +10,7 @@ Windows / macOS 전용 Electron 데스크톱 2D 2048 게임. 화려한 VFX와 �
 |---|---|---|
 | 렌더러 | **PixiJS v8** | WebGL/WebGPU 기반 2D 렌더링, 필터, 커스텀 셰이더 |
 | 트윈/연출 | **GSAP** | 타일 이동, 스쿼시&스트레치, 화면 흔들림, 타임라인 연출 |
-| 파티클 | **@pixi/particle-emitter** | 머지 버스트, 트레일, 콤보 이펙트 (필요시 직접 구현) |
+| 파티클 | **직접 구현** (`src/vfx/particles.ts`) | 머지 버스트. `@pixi/particle-emitter`는 Pixi v8 호환이 불확실해 쓰지 않는다. 트레일/콤보가 필요해지면 다시 검토 |
 | 사운드 | **Howler.js** | 효과음, 콤보에 따른 피치 변화 |
 | 네트워크 | **ws** (서버/클라이언트) | LAN WebSocket |
 | 언어 | **TypeScript** | 타입 안정성 |
@@ -33,6 +33,8 @@ Windows / macOS 전용 Electron 데스크톱 2D 2048 게임. 화려한 VFX와 �
 - `render`와 `vfx`는 그 이벤트를 구독해 연출만 담당한다.
 - 제한 시간 타이머, 계정 세션, 게임 흐름(종료 팝업, 60초 무입력 처리)은 `game`에 둔다.
 - 이펙트를 아무리 추가해도 로직이 오염되지 않고, `core`는 단위 테스트가 쉽다.
+- **DOM과 Pixi의 역할**: 보드, 타일, 파티클 등 게임 연출은 Pixi 캔버스에, 메뉴/HUD/시간 바/팝업/입력창은 그 위에 겹친 DOM(`src/ui`)에 그린다. 텍스트 입력과 팝업은 DOM이 훨씬 단순하다. 비네팅도 DOM 레이어(`#vignette`)다.
+- `game`의 세션은 시계를 직접 읽지 않고 호출하는 쪽이 `now`(ms)를 넘겨준다. 그래서 타이머 규칙을 단위 테스트할 수 있다.
 
 ## 폴더 구조
 
@@ -92,6 +94,15 @@ electron/
 - **브라우저 병행(개발 전용)**: Vite dev server는 일반 브라우저에서도 열린다. VFX 반복 작업은 브라우저 탭에서, 데스크톱 전용 기능(파일 저장, 서버 모드 등)만 Electron에서 확인한다. 배포 대상은 아니다.
 - **VFX 튜닝 UI**: dev 빌드에만 `lil-gui` 또는 `tweakpane`을 붙여 파티클/셰이더 값을 슬라이더로 실시간 조정한다.
 - **상태 유지**: HMR 시 게임 상태가 초기화될 수 있으므로, `core` 상태를 localStorage에 저장하거나 디버그용 "특정 보드 상태로 시작" 기능을 둔다. 고수치 타일 머지 연출을 반복 확인할 때 유용하다.
+
+### 명령
+
+| 명령 | 동작 |
+|---|---|
+| `npm run dev` | Vite dev server + Electron 창 (HMR) |
+| `npm run build` | 렌더러(`dist/`)와 main 프로세스(`dist-electron/`) 빌드 |
+| `npm test` | Vitest 단위/리플레이 테스트 |
+| `npm run typecheck` | `tsc --noEmit` |
 
 ### 주의사항
 

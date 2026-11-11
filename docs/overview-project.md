@@ -29,6 +29,10 @@
   - 왼쪽 상단: 2048 로고
   - 왼쪽 하단: 게임 플레이, 대결, 랭킹, 설정 버튼 (서버에 연결되지 않으면 "대결"은 비활성)
   - 오른쪽: 가상의 2048 게임 플레이(데모). AI를 새로 만들지 않고, **미리 기록한 이동 로그를 `core`로 재생**한다 (로그 파일: `src/assets/demo-log.json`).
+    - 로그 형식: `{ "seed": 시드, "moves": "lrud를 이어 붙인 문자열" }`. 로그의 모든 수는 보드를 바꾸는 유효한 수다.
+    - 재생: `DEMO_STEP`(0.35초)마다 한 수씩 두고, 끝나면 마지막 판을 `DEMO_END_PAUSE`(2.5초) 보여 준 뒤 처음부터 다시 재생한다. 시작 화면일 때만 보이고, 게임을 시작하면 숨긴다. 창이 작으면 보드를 줄여 오른쪽 절반의 가운데에 맞춘다.
+    - 데모는 VFX 설정과 무관하게 타일 이동/머지 연출만 쓴다 (파티클, 튕김, 비네팅 없음).
+    - `core` 규칙이나 RNG가 바뀌어 로그가 어긋나면 `src/game/demo.test.ts`가 깨진다. 그때는 로그를 새로 기록한다 (앱에는 로그를 만드는 AI를 넣지 않는다).
 - 서버 연결 상태(연결됨/끊김/대기 중 N건)를 화면 오른쪽 위에 표시한다. 시작 화면뿐 아니라 모든 화면에서 보인다 ([networking.md](networking.md) "오프라인 큐").
 - `/` 키로 슬래시 커맨드 입력창을 연다 (서버 모드 PC에서만 운영 명령이 동작). 명령 목록과 동작은 [networking.md](networking.md) "슬래시 커맨드".
 
@@ -183,6 +187,7 @@
 | `REQUEST_TIMEOUT` (서버 응답 대기) | 5초 | `constants.ts` |
 | `RANK_TOP` (랭킹 화면 줄 수) | 50 | `constants.ts` |
 | `BACKUP_INTERVAL` (랭킹 주기적 백업) | 300초 | `constants.ts` |
+| `DEMO_STEP` / `DEMO_END_PAUSE` (시작 화면 데모 수 간격 / 끝난 뒤 멈춤) | 0.35초 / 2.5초 | `constants.ts` |
 | `IDLE_LOGOUT` (무입력 시 계정 비움) | 60초 | `constants.ts` |
 | `MATCH_COUNTDOWN` | 3초 | `constants.ts` |
 | `MATCH_TIME_LIMIT` (대결 시간 상한) | 180초 | `constants.ts` |

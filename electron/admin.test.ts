@@ -171,6 +171,20 @@ describe('admin', () => {
     client.disconnect();
   });
 
+  it('server.status: 서버가 없으면 거부, 있으면 주소와 접속자 수', async () => {
+    expect((await admin.run('server.status')).ok).toBe(false);
+    const port = await freePort();
+    await admin.run('server.start', port);
+    expect((await admin.run('server.status')).message).toContain('접속자 0명');
+    const client = new NetClient();
+    client.connect(`localhost:${port}`);
+    await vi.waitFor(() => expect(client.connected).toBe(true));
+    const status = await admin.run('server.status');
+    expect(status.message).toContain('접속자 1명');
+    expect(status.message).toContain(`:${port}`);
+    client.disconnect();
+  });
+
   it('서버 시작을 동시에 불러도 하나만 뜬다', async () => {
     const [a, b] = await Promise.all([admin.run('server.start', await freePort()), admin.run('server.start', await freePort())]);
     expect([a.ok, b.ok]).toEqual([true, false]);

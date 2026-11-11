@@ -1,0 +1,53 @@
+name: 긴급 장애
+description: 운영 중 서비스 장애를 빠르게 보고합니다
+title: "[Hotfix] "
+labels: ["hotfix", "priority: critical"]
+body:
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 증상
+      description: 지금 무엇이 안 되나요?
+    validations:
+      required: true
+  - type: input
+    id: started
+    attributes:
+      label: 발생 시각
+      placeholder: "예) 2026-11-09 14:30 KST"
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: 영향 범위
+      description: 영향받는 기능, 사용자 범위, 데이터 손실 여부
+    validations:
+      required: true
+  - type: textarea
+    id: mitigation
+    attributes:
+      label: 임시 조치
+      description: 이미 취한 조치와 우회 방법. 없으면 "없음"
+  - type: dropdown
+    id: rollback
+    attributes:
+      label: 롤백 가능 여부
+      options:
+        - 가능
+        - 불가능
+        - 모름
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 로그 / 에러 메시지
+      render: shell
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      placeholder: |
+        - [ ] 서비스 정상화 확인
+        - [ ] 원인 파악 및 후속 이슈 등록

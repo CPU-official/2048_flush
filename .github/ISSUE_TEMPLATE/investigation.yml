@@ -1,0 +1,49 @@
+name: 원인 조사
+description: 원인을 모르거나 재현이 어려운 문제를 조사합니다
+title: "[Investigate] "
+labels: ["investigation"]
+body:
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 증상
+      description: 관찰된 현상을 사실 위주로 적어 주세요.
+    validations:
+      required: true
+  - type: dropdown
+    id: reproducible
+    attributes:
+      label: 재현 여부
+      options:
+        - 항상 재현
+        - 가끔 재현
+        - 재현 안 됨
+    validations:
+      required: true
+  - type: textarea
+    id: hypotheses
+    attributes:
+      label: 가설
+      placeholder: |
+        - [ ] 가설 1:
+        - [ ] 가설 2:
+  - type: textarea
+    id: checked
+    attributes:
+      label: 확인한 것 / 배제한 것
+      description: 이미 해본 시도와 그 결과
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 로그 / 단서
+      render: shell
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 원인 특정, 수정 이슈 분리 등 어디까지 하면 끝인지
+      placeholder: |
+        - [ ] 원인 특정
+        - [ ] 수정용 이슈 등록
+    validations:
+      required: true

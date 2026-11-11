@@ -1,0 +1,38 @@
+name: 성능 문제
+description: 느림, 높은 리소스 사용 등 성능 문제를 보고합니다
+title: "[Perf] "
+labels: ["performance"]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 대상 시나리오
+      description: 어떤 기능/화면/요청이 느린가요? 데이터 규모도 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: measured
+    attributes:
+      label: 현재 측정값
+      description: 수치와 측정 방법 (시간, 메모리, 쿼리 수 등)
+      placeholder: "예) 목록 조회 3.2초 (1만 건, Chrome DevTools)"
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: 목표 수치
+      placeholder: "예) 500ms 이하"
+  - type: textarea
+    id: suspect
+    attributes:
+      label: 의심 지점
+      description: (선택)
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      placeholder: |
+        - [ ] 목표 수치 달성 (전후 측정값을 PR에 첨부)
+    validations:
+      required: true

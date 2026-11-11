@@ -1,0 +1,32 @@
+name: 작업
+description: 리팩터링, 설정, 문서 등 일반 작업을 등록합니다
+title: "[Task] "
+labels: ["task"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: 목표
+      description: 무엇을, 왜 하는지 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: todo
+    attributes:
+      label: 작업 목록
+      placeholder: |
+        - [ ] ...
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    id: refs
+    attributes:
+      label: 참고 자료 / 관련 파일
+      description: 링크, 관련 이슈, 파일 경로 (선택)
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+    validations:
+      required: true

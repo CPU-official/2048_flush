@@ -1,0 +1,77 @@
+name: 버그 리포트
+description: 의도와 다르게 동작하는 문제를 보고합니다
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 요약
+      description: 어떤 문제인지 한두 문장으로 적어 주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 재현 방법
+      description: 번호를 매겨 순서대로 적어 주세요.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작
+      description: 에러 메시지나 로그가 있으면 함께 붙여 주세요.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 심각도
+      options:
+        - Critical (서비스 중단 / 데이터 손실)
+        - High (핵심 기능 불가, 우회 불가)
+        - Medium (기능 일부 문제, 우회 가능)
+        - Low (사소한 불편 / 표시 오류)
+    validations:
+      required: true
+  - type: dropdown
+    id: regression
+    attributes:
+      label: 회귀 여부
+      description: 이전에는 정상 동작했나요?
+      options:
+        - 이전에는 정상 (회귀)
+        - 원래 문제였음
+        - 모름
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 환경
+      description: OS, 브라우저, Node 버전, 브랜치/커밋 등
+      placeholder: "예) macOS 15, Node 20, main@abc1234"
+  - type: textarea
+    id: scope
+    attributes:
+      label: 관련 파일 / 원인 추정
+      description: 알고 있다면 적어 주세요. (선택)
+  - type: textarea
+    id: done
+    attributes:
+      label: 완료 조건
+      description: 무엇이 되면 이 이슈를 닫을 수 있는지 적어 주세요.
+      placeholder: |
+        - [ ] 재현 단계에서 문제가 발생하지 않는다
+        - [ ] 회귀 테스트가 추가되었다

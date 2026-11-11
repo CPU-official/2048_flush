@@ -15,6 +15,7 @@ export interface RunningServer {
   setPassword(nickname: string, password: string): boolean; // 없는 닉네임이면 false
   exportCsv(): string; // 비밀번호 없는 CSV를 dir에 쓰고 파일 경로를 돌려준다
   resetRanking(): string; // 지금 랭킹을 ranking.<시각>.json으로 백업한 뒤 비운다. 백업 경로를 돌려준다
+  clients(): number; // 지금 접속 중인 클라이언트 수
   stop(): Promise<void>;
 }
 
@@ -66,6 +67,7 @@ export async function startServer(port: number, dir: string): Promise<RunningSer
         get timer() {
           return timer;
         },
+        clients: () => wss.clients.size,
         users: () => Object.keys(data.users).sort(),
         deleteUser: (nickname) => {
           if (!Object.hasOwn(data.users, nickname)) return false;

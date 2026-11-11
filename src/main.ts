@@ -9,6 +9,7 @@ import type { RankScope } from './net/messages';
 import { BOARD_PX, BoardView, cellCenter, tileColor } from './render/board';
 import './ui/style.css';
 import * as ui from './ui/ui';
+import { initConsole } from './ui/console/console';
 import { initSettings, openSettings, setConnected } from './ui/settings';
 import { bump } from './vfx/bump';
 import { Particles } from './vfx/particles';
@@ -49,11 +50,13 @@ function applyState(state: AppState): void {
   else net.disconnect();
 }
 if (window.api) {
-  initSettings(async (name, ...args) => {
+  const runAdmin = async (name: string, ...args: unknown[]) => {
     const result = await window.api!.admin(name, ...args);
     applyState(result.state);
     return result;
-  }, testConnection);
+  };
+  initSettings(runAdmin, testConnection);
+  initConsole(runAdmin); // 설정 화면 버튼과 같은 관리 함수를 부른다
   window.api.admin('state').then((result) => applyState(result.state));
 }
 

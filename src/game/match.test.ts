@@ -51,7 +51,7 @@ describe('대기와 시작', () => {
     m.find('kim');
     sent.length = 0;
     online = false;
-    m.disconnected();
+    m.disconnected(0);
     expect(m.phase).toBe('idle');
     expect(sent).toEqual([]); // 끊긴 연결로는 보내지 못한다 (서버가 대기열에서 이미 뺐다)
   });
@@ -209,5 +209,107 @@ describe('진행', () => {
     m.onChange = () => changes++;
     begin();
     expect(changes).toBe(3); // 대기, 시작(카운트다운), playing
+  });
+});
+
+describe('재접속', () => {
+  const log = (seed: number, n: number): Direction[] => {
+    const dirs: Direction[] = [];
+    let state = createGame(seed);
+    for (let i = 0; i < n; i++) {
+      for (const d of ['left', 'up', 'right', 'down'] as Direction[]) {
+        const r = move(state, d);
+        if (r.moved) {
+          state = r.state;
+          dirs.push(d);
+          break;
+        }
+      }
+    }
+    return dirs;
+  };
+  const restoreMsg = (over: Partial<Extract<ServerMessage, { type: 'match.restore' }>['restore']> = {}): ServerMessage => ({
+    type: 'match.restore',
+    restore: {
+      id: '1', slot: 0, opponent: 'lee', seed: 7, timer: DEFAULT_TIMER, timeLimit: 180, startIn: -10000, timeUp: false,
+      mine: { moves: log(7, 3), over: null }, theirs: { moves: log(7, 5), over: null }, ...over,
+    },
+  });
+
+  it('끊기면 멈추고, 다시 접속되면 resume을 한 번 보낸다', () => {
+    begin();
+    online = false;
+    m.disconnected(5000);
+    expect(m.offline).toBe(true);
+    expect(play(5000)).toBeNull(); // 끊긴 동안 입력은 받지 않는다
+    m.connected(); // 아직 접속 전
+    online = true;
+    sent.length = 0;
+    m.connected();
+    m.connected();
+    expect(sent).toEqual([{ type: 'match.resume', id: '1', slot: 0 }]);
+  });
+
+  it('restore를 받으면 두 보드를 로그로 복원하고 이어서 진행한다', () => {
+    begin();
+    m.disconnected(5000);
+    m.connected();
+    m.handle(restoreMsg(), 9000);
+    expect(m.offline).toBe(false);
+    expect(m.phase).toBe('playing');
+    expect(m.mine!.state.moves).toBe(3);
+    expect(m.theirs!.moves).toBe(5);
+    const expected = log(7, 5).reduce((s, d) => move(s, d).state, createGame(7));
+    expect(m.theirs!.board).toEqual(expected.board);
+    expect(m.remaining(9000)).toBeCloseTo(170, 0);
+    expect(play(9000)).not.toBeNull();
+  });
+
+  it('복원 시 이미 끝난 쪽은 종료로 표시하고, 상한이 지났으면 matchTime을 보낸다', () => {
+    begin();
+    m.disconnected(5000);
+    m.connected();
+    m.handle(restoreMsg({ theirs: { moves: log(7, 2), over: { score: 40, reason: 'stuck' } }, timeUp: true }), 9000);
+    expect(m.opponentOver).toEqual({ score: 40, reason: 'stuck' });
+    expect(m.myEnd).toBe('matchTime');
+    expect(sent.at(-1)).toMatchObject({ type: 'gameover', reason: 'matchTime' });
+  });
+
+  it('상대 연결 상태를 반영한다', () => {
+    begin();
+    m.handle({ type: 'opponent.status', status: 'offline' }, 5000);
+    expect(m.opponentOffline).toBe(true);
+    m.handle({ type: 'opponent.status', status: 'online' }, 6000);
+    expect(m.opponentOffline).toBe(false);
+  });
+
+  it('대기 시간 안에 복원되지 않으면 대결을 잃는다', () => {
+    begin();
+    m.disconnected(5000);
+    m.tick(5000 + 14000);
+    expect(m.phase).toBe('playing');
+    m.tick(5000 + 15001);
+    expect(m.phase).toBe('idle');
+    expect(m.lost).toBe(true);
+  });
+
+  it('resume 응답 전에 다시 끊겨도 다음 접속에서 resume을 다시 보낸다', () => {
+    begin();
+    m.disconnected(5000);
+    m.connected();
+    m.disconnected(6000);
+    sent.length = 0;
+    m.connected();
+    expect(sent).toEqual([{ type: 'match.resume', id: '1', slot: 0 }]);
+  });
+
+  it('내 게임이 이미 끝났으면 끊겨도 대결을 포기하지 않는다', () => {
+    begin();
+    m.tick(4000 + 200000); // 대결 시간 상한을 넘겨 내 게임이 끝난다
+    expect(m.myEnd).not.toBeNull();
+    m.disconnected(300000);
+    m.tick(300000 + 20000);
+    expect(m.lost).toBe(false);
+    expect(m.offline).toBe(true);
   });
 });

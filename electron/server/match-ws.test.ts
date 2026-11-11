@@ -67,6 +67,33 @@ describe('대결 (ws)', () => {
     expect(fs.existsSync(path.join(dir, 'ranking.json'))).toBe(false); // 대결은 랭킹에 기록되지 않는다
   });
 
+  it('끊겼다가 새 연결로 resume하면 입력 로그로 복원하고 이어서 진행한다', async () => {
+    const [a, b] = [await player(), await player()];
+    a.send({ type: 'match.find', nickname: 'kim' });
+    b.send({ type: 'match.find', nickname: 'lee' });
+    const found = (await a.next('match.found')) as Extract<ServerMessage, { type: 'match.found' }>;
+    await b.next('start');
+    a.send({ type: 'move', dir: 'left', turn: 0 });
+    b.send({ type: 'move', dir: 'up', turn: 0 });
+    await b.next('move');
+    await a.next('move');
+
+    sockets[0].terminate(); // a의 연결이 끊겼다
+    expect(await b.next('opponent.status')).toEqual({ type: 'opponent.status', status: 'offline' });
+
+    const a2 = await player();
+    a2.send({ type: 'match.resume', id: found.id, slot: found.slot });
+    const restored = (await a2.next('match.restore')) as Extract<ServerMessage, { type: 'match.restore' }>;
+    expect(restored.restore).toMatchObject({ id: found.id, slot: 0, opponent: 'lee', mine: { moves: ['left'], over: null }, theirs: { moves: ['up'], over: null } });
+    expect(await b.next('opponent.status')).toEqual({ type: 'opponent.status', status: 'online' });
+
+    a2.send({ type: 'move', dir: 'right', turn: 1 });
+    expect(await b.next('move')).toEqual({ type: 'move', dir: 'right', turn: 1 });
+    a2.send({ type: 'gameover', score: 10, maxTile: 8, reason: 'stuck' });
+    b.send({ type: 'gameover', score: 20, maxTile: 8, reason: 'stuck' });
+    expect(await a2.next('result')).toMatchObject({ outcome: 'lose', score: 10, opponentScore: 20 });
+  });
+
   it('대기 중에 끊긴 사람은 대기열에서 빠진다', async () => {
     const a = await player();
     a.send({ type: 'match.find', nickname: 'kim' });

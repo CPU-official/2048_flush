@@ -45,7 +45,12 @@ button.ghost { color: var(--text); }
 button.ghost:hover { background: #262626; filter: none; }
 
 .start { display: flex; flex-direction: column; justify-content: space-between; width: 50%; height: 100%; padding: 8vh 6vw; }
-.logo { margin: 0; font-size: 160px; font-weight: 900; line-height: 1; letter-spacing: -6px; color: var(--neon); text-shadow: 0 0 48px rgba(57, 255, 20, 0.45); }
+/* 로고: 한 색으로 채운 납작한 배지에 글자를 음각으로 판다 (그림자/글로우 없음) */
+.logo { margin: 0; width: 520px; max-width: 100%; }
+.logo svg { display: block; width: 100%; height: auto; }
+.logo path { fill: var(--neon); }
+.logo text { fill: var(--bg); font-family: Impact, 'Arial Black', system-ui, sans-serif; font-weight: 900; text-anchor: middle; }
+.logo .num { font-size: 150px; letter-spacing: 2px; font-style: italic; }
 .menu {
   display: flex; flex-direction: column; gap: 10px; width: 340px; padding: 14px;
   border-radius: 44px; border: 1px solid var(--line);

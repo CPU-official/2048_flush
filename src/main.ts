@@ -1,7 +1,9 @@
 import { Application, Container } from 'pixi.js';
-import { IDLE_LOGOUT, NICKNAME_MAX, RANK_TOP } from './constants';
+import demoLog from './assets/demo-log.json';
+import { DEMO_END_PAUSE, DEMO_STEP, IDLE_LOGOUT, NICKNAME_MAX, RANK_TOP } from './constants';
 import { maxTile, type Direction } from './core/game';
 import { validAccount, type Account } from './game/account';
+import { Demo } from './game/demo';
 import { GameSession } from './game/session';
 import type { AppState } from './net/admin';
 import { NetClient, testConnection } from './net/client';
@@ -31,6 +33,16 @@ const board = new BoardView();
 const particles = new Particles();
 world.addChild(board, particles);
 app.stage.addChild(world);
+
+// 시작 화면 오른쪽에서 기록된 판을 반복 재생한다 (시작 화면일 때만 보인다)
+const demoWorld = new Container();
+const demoBoard = new BoardView();
+demoWorld.addChild(demoBoard);
+app.stage.addChild(demoWorld);
+const demo = new Demo(demoLog);
+demoBoard.reset(demo.state.board);
+let demoWait = DEMO_STEP;
+let demoEnded = false;
 
 const net = new NetClient();
 net.onChange = () => {
@@ -72,6 +84,7 @@ function startGame(): void {
   gameId = crypto.randomUUID();
   board.reset(session.state.board);
   world.visible = true;
+  demoWorld.visible = false;
   ui.showGame(account?.nickname ?? null);
   if (account) {
     const id = gameId;
@@ -88,6 +101,7 @@ function quit(): void {
   gameId = '';
   rankingView++;
   world.visible = false;
+  demoWorld.visible = true;
   ui.showStart();
 }
 
@@ -171,6 +185,24 @@ ui.onAccountSubmit((nickname, password) => {
 app.ticker.add(() => {
   world.position.set((app.screen.width - BOARD_PX) / 2, (app.screen.height - BOARD_PX) / 2);
   particles.update(app.ticker.deltaMS / 1000);
+  // 화면 오른쪽 절반의 가운데에, 창이 작으면 줄여서 놓는다
+  const fit = Math.min(1, (app.screen.height * 0.8) / BOARD_PX, (app.screen.width * 0.5 * 0.85) / BOARD_PX);
+  demoWorld.scale.set(fit);
+  demoWorld.position.set(app.screen.width * 0.75 - (BOARD_PX * fit) / 2, (app.screen.height - BOARD_PX * fit) / 2);
+  if (demoWorld.visible && (demoWait -= app.ticker.deltaMS / 1000) <= 0) {
+    const result = demoEnded ? null : demo.next();
+    if (result) {
+      demoBoard.apply(result.events);
+      demoWait = DEMO_STEP;
+    } else if (!demoEnded) {
+      demoEnded = true; // 로그가 끝났다: 마지막 판을 잠시 보여 준 뒤 처음부터
+      demoWait = DEMO_END_PAUSE;
+    } else {
+      demoEnded = false;
+      demoBoard.reset(demo.restart().board);
+      demoWait = DEMO_STEP;
+    }
+  }
   if (!session || session.ended) return;
   const now = performance.now();
   if (session.tick(now)) return gameOver();

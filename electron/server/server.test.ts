@@ -38,6 +38,14 @@ describe('ranking', () => {
     expect(data.games).toHaveLength(1);
   });
 
+  it('닉네임이 __proto__여도 일반 계정처럼 저장하고 비밀번호를 검사한다', () => {
+    const data: RankingData = { users: {}, games: [] };
+    expect(submit(data, game('a', '__proto__', '1111', 1), 1)).toBeNull();
+    expect(Object.hasOwn(data.users, '__proto__')).toBe(true);
+    expect(submit(data, game('b', '__proto__', '9999', 1), 2)).toBe('password');
+    expect(Object.hasOwn(JSON.parse(JSON.stringify(data)).users, '__proto__')).toBe(true);
+  });
+
   it('형식이 틀리면 invalid로 거부하고 등록하지 않는다', () => {
     const data = empty();
     expect(submit(data, game('a', '', '1111', 1), 1)).toBe('invalid');

@@ -34,7 +34,7 @@ export function submit(data: RankingData, s: Submission, now: number): RankError
   if (Object.hasOwn(data.users, s.nickname)) {
     if (data.users[s.nickname] !== s.password) return 'password';
   } else {
-    data.users[s.nickname] = s.password;
+    data.users = { ...data.users, [s.nickname]: s.password }; // data.users[키]=는 `__proto__`를 일반 키로 저장하지 않는다
   }
   if (!data.games.some((g) => g.id === s.id)) {
     data.games.push({ id: s.id, nickname: s.nickname, score: s.score, maxTile: s.maxTile, at: now });

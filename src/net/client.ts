@@ -4,6 +4,7 @@ import type { ClientMessage, RankEntry, RankError, RankScope, ServerMessage } fr
 
 const TIMER_KEY = 'timer';
 const QUEUE_KEY = 'queue';
+const MATCH_TYPES = new Set(['match.found', 'start', 'move', 'match.timeup', 'opponent.over', 'opponent.status', 'match.restore', 'result']);
 
 export interface Submission {
   id: string;
@@ -53,6 +54,8 @@ export class NetClient {
   connected = false;
   // 연결 상태나 대기 건수가 바뀔 때 불린다.
   onChange = (): void => {};
+  // 대결 메시지(match.*, start, move, opponent.*, result)가 오면 불린다 (src/game/match.ts가 받는다).
+  onMatch = (_msg: ServerMessage): void => {};
   private flushing = false;
   private flushRetry?: ReturnType<typeof setTimeout>;
   private socket?: WebSocket;
@@ -81,6 +84,13 @@ export class NetClient {
         this.timer = msg.timer;
         this.storage?.setItem(TIMER_KEY, JSON.stringify(msg.timer));
       }
+      if (MATCH_TYPES.has(msg.type)) {
+        try {
+          this.onMatch(msg);
+        } catch (err) {
+          console.error('대결 메시지 처리 실패:', err); // 화면 코드의 오류가 랭킹 응답 처리까지 막지 않게 한다
+        }
+      }
       for (const waiter of [...this.waiters]) waiter(msg);
     };
     socket.onclose = () => {
@@ -90,6 +100,13 @@ export class NetClient {
       for (const waiter of [...this.waiters]) waiter(null);
       this.retry = setTimeout(() => this.connect(address), RECONNECT_INTERVAL * 1000);
     };
+  }
+
+  // 응답을 기다리지 않는 메시지(대결 전용)를 보낸다. 접속돼 있지 않으면 false.
+  post(msg: ClientMessage): boolean {
+    if (!this.connected || !this.socket) return false;
+    this.socket.send(JSON.stringify(msg));
+    return true;
   }
 
   disconnect(): void {

@@ -11,6 +11,7 @@ root.innerHTML = `
       <button data-act="play">게임 플레이</button>
       <button data-act="match" disabled>대결</button>
       <button data-act="ranking" class="ghost">랭킹</button>
+      <button data-act="howto" class="ghost">게임 방법</button>
       <button data-act="settings" class="ghost" ${window.api ? '' : 'disabled'}>설정</button>
     </nav>
   </section>
@@ -45,6 +46,19 @@ root.innerHTML = `
   </section>
   <section data-screen="settings" class="popup" hidden>
     <div class="panel wide" data-id="settings"></div>
+  </section>
+  <section data-screen="howto" class="popup" hidden>
+    <div class="panel wide">
+      <h2>게임 방법</h2>
+      <ul class="howto">
+        <li><b>조작</b>방향키 또는 WASD로 타일을 밀어요. 한 번 누르면 한 수예요.</li>
+        <li><b>합치기</b>같은 숫자가 부딪히면 하나로 합쳐져요. 합쳐진 값만큼 점수를 얻어요.</li>
+        <li><b>제한 시간</b>한 수마다 시간이 있어요. 수를 둘수록 시간이 점점 짧아져요.</li>
+        <li><b>게임 오버</b>시간이 끝나거나 더 움직일 수 없으면 끝나요. 2048을 만들어도 계속할 수 있어요.</li>
+        <li><b>기록</b>끝나면 닉네임과 숫자 4자리 비밀번호로 랭킹에 남길 수 있어요.</li>
+      </ul>
+      <button data-act="close-howto" class="ghost">닫기</button>
+    </div>
   </section>
   <section data-screen="ranking" class="popup" hidden>
     <div class="panel wide">
@@ -85,6 +99,10 @@ export function onAccountSubmit(handler: (nickname: string, password: string) =>
 export function showStart(): void {
   show('start');
   setTime(1);
+}
+
+export function showHowTo(): void {
+  show('start', 'howto');
 }
 
 export function showSettings(): void {

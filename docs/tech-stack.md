@@ -104,13 +104,14 @@ electron/
 |---|---|
 | `npm run dev` | Vite dev server + Electron 창 (HMR) |
 | `npm run build` | 렌더러(`dist/`)와 main 프로세스(`dist-electron/`) 빌드 |
+| `npm run dist` | `vite build` 후 electron-builder로 `release/`에 설치 파일 생성 (mac: dmg, win: NSIS 설치본 + 포터블 exe). `release/`는 git 무시 |
 | `npm test` | Vitest 단위/리플레이 테스트 |
 | `npm run typecheck` | `tsc --noEmit` |
 
 ### 주의사항
 
 - **코드 서명**: macOS는 Apple Developer 계정(연 $99)과 공증이 없으면 "손상된 앱" 경고가 뜬다. Windows도 서명이 없으면 SmartScreen 경고가 나온다. 지인 테스트용이면 생략 가능, 정식 배포라면 필요하다.
-- **빌드 환경**: macOS 앱은 Mac에서 빌드한다. Windows 빌드는 GitHub Actions의 windows 러너 사용을 권장한다.
+- **빌드 환경**: macOS 앱은 Mac에서 빌드한다. Windows 빌드는 GitHub Actions의 windows 러너 사용을 권장하지만, 현재는 Mac에서 `electron-builder --win`으로 크로스 빌드해 GitHub Release에 수동 업로드한다 (v0.1.0).
 - **용량**: Chromium 포함으로 설치 파일이 약 80~150MB.
 - **오디오 자동재생**: `autoplayPolicy` 설정으로 사용자 입력 전에도 재생을 허용한다.
 - **보안 기본값**: `contextIsolation: true`, `nodeIntegration: false` 유지. 파일 저장 등 네이티브 기능만 preload로 노출한다.

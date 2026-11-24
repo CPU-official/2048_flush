@@ -263,6 +263,8 @@ ui.onAction((act) => {
   if (act === 'play' || act === 'again') startGame();
   if (act === 'quit' || act === 'close-settings') quit();
   if (act === 'settings') openSettings().then(ui.showSettings);
+  if (act === 'howto') ui.showHowTo();
+  if (act === 'close-howto') ui.showStart();
   if (act === 'match') matchUi.showMatchNick();
   if (act === 'match-cancel') quit();
   if (act === 'match-again') findMatch(matchNick);

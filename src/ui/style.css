@@ -96,6 +96,10 @@ button.ghost:hover { background: #262626; filter: none; }
 .panel .users { display: flex; flex-direction: column; gap: 8px; max-height: 220px; overflow-y: auto; }
 .panel .users .row input { max-width: 130px; }
 .panel .users .row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.howto { margin: 8px 0 12px; padding: 0; list-style: none; text-align: left; }
+.howto li { padding: 12px 18px; border-radius: 18px; font-size: 17px; line-height: 1.5; }
+.howto li:nth-child(odd) { background: rgba(255, 255, 255, 0.03); }
+.howto b { display: block; color: var(--neon); }
 .tabs { display: flex; gap: 8px; }
 .tabs button { flex: 1; padding: 14px; font-size: 18px; color: var(--muted); }
 .tabs button.on { background: #2a2a2a; color: var(--neon); }
